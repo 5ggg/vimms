@@ -1,10 +1,7 @@
 import math
 from collections import defaultdict
-from collections import namedtuple
 
 import numpy as np
-import pandas as pd
-import trio
 from events import Events
 
 from vimms.Common import LoggerMixin, adduct_transformation

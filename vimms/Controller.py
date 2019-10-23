@@ -5,7 +5,7 @@ import numpy as np
 import pylab as plt
 
 from vimms.Common import POSITIVE, DEFAULT_MS1_SCAN_WINDOW, LoggerMixin
-from vimms.MassSpec import ScanParameters, IndependentMassSpectrometer
+from vimms.MassSpec import ScanParameters
 from vimms.MzmlWriter import MzmlWriter
 
 
@@ -61,33 +61,6 @@ class Controller(LoggerMixin):
             plt.show()
 
 
-class SimpleMs1Controller(Controller):
-    def __init__(self, mass_spec):
-        super().__init__(mass_spec)
-        default_scan = ScanParameters()
-        default_scan.set(ScanParameters.MS_LEVEL, 1)
-        default_scan.set(ScanParameters.ISOLATION_WINDOWS, [[DEFAULT_MS1_SCAN_WINDOW]])
-
-        mass_spec.reset()
-        mass_spec.current_N = 0
-        mass_spec.current_DEW = 0
-
-        mass_spec.set_repeating_scan(default_scan)
-        mass_spec.register(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.handle_scan)
-        mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING, self.handle_acquisition_open)
-        mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING, self.handle_acquisition_closing)
-
-    def handle_acquisition_open(self):
-        self.logger.info('Acquisition open')
-
-    def handle_acquisition_closing(self):
-        self.logger.info('Acquisition closing')
-
-    def _process_scan(self, scan):
-        if scan.num_peaks > 0:
-            self.logger.info('Time %f Received %s' % (self.mass_spec.time, scan))
-
-
 class Precursor(object):
     def __init__(self, precursor_mz, precursor_intensity, precursor_charge, precursor_scan_id):
         self.precursor_mz = precursor_mz
@@ -100,6 +73,21 @@ class Precursor(object):
             self.precursor_mz, self.precursor_intensity, self.precursor_charge, self.precursor_scan_id)
 
 
+class SimpleMs1Controller(Controller):
+    def __init__(self, mass_spec):
+        super().__init__(mass_spec)
+
+    def handle_acquisition_open(self):
+        self.logger.info('Acquisition open')
+
+    def handle_acquisition_closing(self):
+        self.logger.info('Acquisition closing')
+
+    def _process_scan(self, scan):
+        if scan.num_peaks > 0:
+            self.logger.info('Time %f Received %s' % (self.mass_spec.time, scan))
+
+
 class TopNController(Controller):
     def __init__(self, mass_spec, N, isolation_window, mz_tol, rt_tol, min_ms1_intensity):
         super().__init__(mass_spec)
@@ -108,20 +96,6 @@ class TopNController(Controller):
         self.mz_tol = mz_tol  # the m/z window (ppm) to prevent the same precursor ion to be fragmented again
         self.rt_tol = rt_tol  # the rt window to prevent the same precursor ion to be fragmented again
         self.min_ms1_intensity = min_ms1_intensity  # minimum ms1 intensity to fragment
-
-        mass_spec.reset()
-        mass_spec.current_N = N
-        mass_spec.current_DEW = rt_tol
-
-        default_scan = ScanParameters()
-        default_scan.set(ScanParameters.MS_LEVEL, 1)
-        default_scan.set(ScanParameters.ISOLATION_WINDOWS, [[DEFAULT_MS1_SCAN_WINDOW]])
-        mass_spec.set_repeating_scan(default_scan)
-
-        # register new event handlers under this controller
-        mass_spec.register(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.handle_scan)
-        mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING, self.handle_acquisition_open)
-        mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING, self.handle_acquisition_closing)
 
     def handle_acquisition_open(self):
         self.logger.info('Time %f Acquisition open' % self.mass_spec.time)
@@ -198,16 +172,6 @@ class TreeController(Controller):
         self.kaufmann_design = kaufmann_design
         self.extra_bins = extra_bins
         self.num_windows = num_windows
-
-        mass_spec.reset()
-        default_scan = ScanParameters()
-        default_scan.set(ScanParameters.MS_LEVEL, 1)
-        default_scan.set(ScanParameters.ISOLATION_WINDOWS, [[DEFAULT_MS1_SCAN_WINDOW]])
-        mass_spec.set_repeating_scan(default_scan)
-
-        mass_spec.register(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.handle_scan)
-        mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING, self.handle_acquisition_open)
-        mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING, self.handle_acquisition_closing)
 
     def handle_acquisition_open(self):
         self.logger.info('Acquisition open')
@@ -357,21 +321,6 @@ class HybridController(Controller):
             self.mz_tol) == len(self.rt_tol)
         if self.purity_threshold != 0:
             assert all(self.n_purity_scans < np.array(self.N))
-
-        mass_spec.reset()
-        current_N, current_rt_tol, idx = self._get_current_N_DEW()
-        mass_spec.current_N = current_N
-        mass_spec.current_DEW = current_rt_tol
-
-        default_scan = ScanParameters()
-        default_scan.set(ScanParameters.MS_LEVEL, 1)
-        default_scan.set(ScanParameters.ISOLATION_WINDOWS, [[DEFAULT_MS1_SCAN_WINDOW]])
-        mass_spec.set_repeating_scan(default_scan)
-
-        # register new event handlers under this controller
-        mass_spec.register(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.handle_scan)
-        mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING, self.handle_acquisition_open)
-        mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING, self.handle_acquisition_closing)
 
     def handle_acquisition_open(self):
         self.logger.info('Time %f Acquisition open' % self.mass_spec.time)
