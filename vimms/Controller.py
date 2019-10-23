@@ -14,11 +14,25 @@ class Controller(LoggerMixin):
         self.scans = defaultdict(list)  # key: ms level, value: list of scans for that level
         self.mass_spec = mass_spec
         self.make_plot = False
+        self.last_ms1_scan = None
 
     def handle_scan(self, scan):
+        self.logger.info('Time %f Received %s' % (self.mass_spec.time, scan))
         self.scans[scan.ms_level].append(scan)
+
+        # plot scan if there are peaks
+        if scan.num_peaks > 0:
+            self._plot_scan(scan)
+
+        # we get an ms1 scan, if it has a peak, then store it for fragmentation next time
+        if scan.ms_level == 1:
+            if scan.num_peaks > 0:
+                self.last_ms1_scan = scan
+            else:
+                self.last_ms1_scan = None
+
+        # impelemnted by subclass
         self._process_scan(scan)
-        self._update_parameters(scan)
 
     def handle_acquisition_open(self):
         raise NotImplementedError()
@@ -31,9 +45,6 @@ class Controller(LoggerMixin):
         writer.write_mzML(outfile)
 
     def _process_scan(self, scan):
-        raise NotImplementedError()
-
-    def _update_parameters(self, scan):
         raise NotImplementedError()
 
     def _plot_scan(self, scan):
@@ -75,10 +86,6 @@ class SimpleMs1Controller(Controller):
     def _process_scan(self, scan):
         if scan.num_peaks > 0:
             self.logger.info('Time %f Received %s' % (self.mass_spec.time, scan))
-            self._plot_scan(scan)
-
-    def _update_parameters(self, scan):
-        pass  # do nothing
 
 
 class Precursor(object):
@@ -96,7 +103,6 @@ class Precursor(object):
 class TopNController(Controller):
     def __init__(self, mass_spec, N, isolation_window, mz_tol, rt_tol, min_ms1_intensity):
         super().__init__(mass_spec)
-        self.last_ms1_scan = None
         self.N = N
         self.isolation_window = isolation_window  # the isolation window (in Dalton) to select a precursor ion
         self.mz_tol = mz_tol  # the m/z window (ppm) to prevent the same precursor ion to be fragmented again
@@ -124,20 +130,6 @@ class TopNController(Controller):
         self.logger.info('Time %f Acquisition closing' % self.mass_spec.time)
 
     def _process_scan(self, scan):
-        self.logger.info('Time %f Received from mass spec %s' % (self.mass_spec.time, scan))
-        if scan.ms_level == 1:  # we get an ms1 scan, if it has a peak, then store it for fragmentation next time
-            if scan.num_peaks > 0:
-                self.last_ms1_scan = scan
-            else:
-                self.last_ms1_scan = None
-
-        elif scan.ms_level == 2:  # if we get ms2 scan, then do something with it
-            # scan.filter_intensity(self.min_ms2_intensity)
-            if scan.num_peaks > 0:
-                self._plot_scan(scan)
-
-    def _update_parameters(self, scan):
-
         # if there's a previous ms1 scan to process
         if self.last_ms1_scan is not None:
 
@@ -201,7 +193,6 @@ class TopNController(Controller):
 class TreeController(Controller):
     def __init__(self, mass_spec, dia_design, window_type, kaufmann_design, extra_bins, num_windows=None):
         super().__init__(mass_spec)
-        self.last_ms1_scan = None
         self.dia_design = dia_design
         self.window_type = window_type
         self.kaufmann_design = kaufmann_design
@@ -225,19 +216,6 @@ class TreeController(Controller):
         self.logger.info('Acquisition closing')
 
     def _process_scan(self, scan):
-        self.logger.info('Received scan {}'.format(scan))
-        if scan.ms_level == 1:  # if we get a non-empty ms1 scan
-            if scan.num_peaks > 0:
-                self.last_ms1_scan = scan
-            else:
-                self.last_ms1_scan = None
-
-        elif scan.ms_level == 2:  # if we get ms2 scan, then do something with it
-            if scan.num_peaks > 0:
-                self._plot_scan(scan)
-
-    def _update_parameters(self, scan):
-
         # if there's a previous ms1 scan to process
         if self.last_ms1_scan is not None:
 
@@ -360,7 +338,6 @@ class HybridController(Controller):
     def __init__(self, mass_spec, N, scan_param_changepoints, isolation_window, mz_tol, rt_tol, min_ms1_intensity,
                  n_purity_scans=None, purity_shift=None, purity_threshold=0):
         super().__init__(mass_spec)
-        self.last_ms1_scan = None
         self.N = np.array(N)
         if scan_param_changepoints is not None:
             self.scan_param_changepoints = np.array([0] + scan_param_changepoints)
@@ -403,20 +380,6 @@ class HybridController(Controller):
         self.logger.info('Time %f Acquisition closing' % self.mass_spec.time)
 
     def _process_scan(self, scan):
-        self.logger.info('Time %f Received from mass spec %s' % (self.mass_spec.time, scan))
-        if scan.ms_level == 1:  # we get an ms1 scan, if it has a peak, then store it for fragmentation next time
-            if scan.num_peaks > 0:
-                self.last_ms1_scan = scan
-            else:
-                self.last_ms1_scan = None
-
-        elif scan.ms_level == 2:  # if we get ms2 scan, then do something with it
-            # scan.filter_intensity(self.min_ms2_intensity)
-            if scan.num_peaks > 0:
-                self._plot_scan(scan)
-
-    def _update_parameters(self, scan):
-
         # if there's a previous ms1 scan to process
         if self.last_ms1_scan is not None:
 
