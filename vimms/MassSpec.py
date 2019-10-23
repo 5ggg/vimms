@@ -4,6 +4,7 @@ from collections import namedtuple
 
 import numpy as np
 import pandas as pd
+import trio
 from events import Events
 
 from vimms.Common import LoggerMixin, adduct_transformation
@@ -177,24 +178,19 @@ class IndependentMassSpectrometer(LoggerMixin):
     ACQUISITION_STREAM_OPENING = 'AcquisitionStreamOpening'
     ACQUISITION_STREAM_CLOSING = 'AcquisitionStreamClosing'
 
-    def __init__(self, ionisation_mode, chemicals, peak_sampler,
-                 schedule_file=None, add_noise=False, dynamic_exclusion=True):
+    def __init__(self, ionisation_mode, chemicals, peak_sampler, add_noise=False, dynamic_exclusion=True):
         """
         Creates a mass spec object.
         :param ionisation_mode: POSITIVE or NEGATIVE
         :param chemicals: a list of Chemical objects in the dataset
         :param peak_sampler: an instance of DataGenerator.PeakSampler object
-        :param schedule_file: path to schedule (CSV) file in DsDA format
         :param add_noise: a flag to indicate whether to add noise
         :param dynamic_exclusion: a flag to indicate whether to perform dynamic exclusion
         """
 
-        # current scan index, internal time and schedule file if provided
+        # current scan index and internal time
         self.idx = 0
         self.time = 0
-        self.schedule_file = schedule_file
-        if self.schedule_file is not None:
-            self.schedule = pd.read_csv(schedule_file)
 
         # current task queue
         self.processing_queue = []
@@ -245,7 +241,7 @@ class IndependentMassSpectrometer(LoggerMixin):
         :param pbar: progress bar
         :return: None
         """
-        max_time = self._init_time(max_time, min_time)
+        self.time = min_time
         self.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING)
         try:
             while self.time < max_time:
@@ -396,20 +392,6 @@ class IndependentMassSpectrometer(LoggerMixin):
     # Private methods
     ####################################################################################################################
 
-    def _init_time(self, max_time, min_time):
-        """
-        Sets initial mass spec time
-        :param max_time: end time
-        :param min_time: start time
-        :return: a new end time, if it's read from DsDA CSV file, otherwise it's the same
-        """
-        if self.schedule_file is None:
-            self.time = min_time
-        else:
-            self.time = self.schedule["targetTime"].values[0]
-            max_time = self.schedule["targetTime"].values[-1]
-        return max_time
-
     def _get_param(self):
         """
         Retrieves a new set of scan parameters from the processing queue
@@ -427,18 +409,14 @@ class IndependentMassSpectrometer(LoggerMixin):
         # look into the queue, find out what the next scan ms_level is, and compute the scan duration
         # only applicable for simulated mass spec, since the real mass spec can generate its own scan duration.
         self.idx += 1
-        if self.schedule_file is None:
-            if next_scan_param is None:  # if queue is empty, the next one is an MS1 scan by default
-                next_level = 1
-            else:
-                next_level = next_scan_param.get(ScanParameters.MS_LEVEL)
-
-            # sample current scan duration based on current_DEW, current_N, current_level and next_level
-            current_scan_duration = self._sample_scan_duration(current_DEW, current_N,
-                                                               current_level, next_level)
+        if next_scan_param is None:  # if queue is empty, the next one is an MS1 scan by default
+            next_level = 1
         else:
-            new_time = self.schedule["targetTime"][self.idx]
-            current_scan_duration = new_time - self.time
+            next_level = next_scan_param.get(ScanParameters.MS_LEVEL)
+
+        # sample current scan duration based on current_DEW, current_N, current_level and next_level
+        current_scan_duration = self._sample_scan_duration(current_DEW, current_N,
+                                                           current_level, next_level)
 
         self.time += current_scan_duration
         self.logger.info('Time %f Len(queue)=%d' % (self.time, len(self.processing_queue)))
@@ -703,58 +681,3 @@ class IndependentMassSpectrometer(LoggerMixin):
             if window[0] < self._get_mz(chemical, query_rt, which_isotope, which_adduct) <= window[1]:
                 return True
         return False
-
-
-class DsDAMassSpec(IndependentMassSpectrometer):
-    """
-    A mass spec class with fixed schedule time, used during DsDA experiment in the paper.
-    TODO: Could probably be removed.
-    """
-
-    def run(self, schedule, pbar=None):
-        self.schedule = schedule
-        self.time = schedule["targetTime"][0]
-        self.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING)
-
-        try:
-            last_ms1_id = 0
-            while len(self.processing_queue) != 0:
-                scan_params = self.processing_queue.pop(0)
-
-                # make a scan
-                target_time = scan_params.get(ScanParameters.TIME)
-                scan = self._get_scan(target_time, scan_params)
-
-                # set scan duration
-                try:
-                    next_time = self.processing_queue[0].get(ScanParameters.TIME)
-                except IndexError:
-                    next_time = 1
-                scan.scan_duration = next_time - target_time
-
-                # update precursor scan id
-                if scan.ms_level == 1:
-                    last_ms1_id = scan.scan_id
-                else:
-                    precursor = scan_params.get(ScanParameters.PRECURSOR)
-                    if precursor is not None:
-                        precursor.precursor_scan_id = last_ms1_id
-                        self.precursor_information[precursor].append(scan)
-
-                # notify controller about this scan
-                self.fire_event(self.MS_SCAN_ARRIVED, scan)
-
-                # increase mass spec time
-                self.idx += 1
-                self.time += scan.scan_duration
-
-                # print a progress bar if provided
-                if pbar is not None:
-                    elapsed = self.time
-                    pbar.update(elapsed)
-                    # TODO: fix error bar
-
-        finally:
-            self.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING)
-            if pbar is not None:
-                pbar.close()

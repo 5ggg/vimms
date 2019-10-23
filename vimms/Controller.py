@@ -2,9 +2,7 @@ import sys
 from collections import defaultdict
 
 import numpy as np
-import pandas as pd
 import pylab as plt
-from tqdm import tqdm
 
 from vimms.Common import POSITIVE, DEFAULT_MS1_SCAN_WINDOW, LoggerMixin
 from vimms.MassSpec import ScanParameters, IndependentMassSpectrometer
@@ -38,9 +36,6 @@ class Controller(LoggerMixin):
     def _update_parameters(self, scan):
         raise NotImplementedError()
 
-    def run(self, min_time, max_time, progress_bar=True):
-        raise NotImplementedError()
-
     def _plot_scan(self, scan):
         if self.make_plot:
             plt.figure()
@@ -71,13 +66,6 @@ class SimpleMs1Controller(Controller):
         mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING, self.handle_acquisition_open)
         mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING, self.handle_acquisition_closing)
 
-    def run(self, min_time, max_time, progress_bar=True):
-        if progress_bar:
-            with tqdm(total=max_time - min_time, initial=0) as pbar:
-                self.mass_spec.run(min_time, max_time, pbar=pbar)
-        else:
-            self.mass_spec.run(min_time, max_time)
-
     def handle_acquisition_open(self):
         self.logger.info('Acquisition open')
 
@@ -102,7 +90,7 @@ class Precursor(object):
 
     def __str__(self):
         return 'Precursor mz %f intensity %f charge %d scan_id %d' % (
-        self.precursor_mz, self.precursor_intensity, self.precursor_charge, self.precursor_scan_id)
+            self.precursor_mz, self.precursor_intensity, self.precursor_charge, self.precursor_scan_id)
 
 
 class TopNController(Controller):
@@ -128,16 +116,6 @@ class TopNController(Controller):
         mass_spec.register(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.handle_scan)
         mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING, self.handle_acquisition_open)
         mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING, self.handle_acquisition_closing)
-
-    def run(self, min_time=None, max_time=None, progress_bar=True):
-        if min_time is None and max_time is None:
-            min_time = self.mass_spec.schedule["targetTime"].values[0]
-            max_time = self.mass_spec.schedule["targetTime"].values[-1]
-        if progress_bar:
-            with tqdm(total=max_time - min_time, initial=0) as pbar:
-                self.mass_spec.run(min_time, max_time, pbar=pbar)
-        else:
-            self.mass_spec.run(min_time, max_time)
 
     def handle_acquisition_open(self):
         self.logger.info('Time %f Acquisition open' % self.mass_spec.time)
@@ -182,7 +160,7 @@ class TopNController(Controller):
                 if intensity < self.min_ms1_intensity:
                     self.logger.debug(
                         'Time %f Minimum intensity threshold %f reached at %f, %d' % (
-                        self.mass_spec.time, self.min_ms1_intensity, intensity, fragmented_count))
+                            self.mass_spec.time, self.min_ms1_intensity, intensity, fragmented_count))
                     break
 
                 # skip ion in the dynamic exclusion list of the mass spec
@@ -239,13 +217,6 @@ class TreeController(Controller):
         mass_spec.register(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.handle_scan)
         mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING, self.handle_acquisition_open)
         mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING, self.handle_acquisition_closing)
-
-    def run(self, min_time, max_time, progress_bar=True):
-        if progress_bar:
-            with tqdm(total=max_time - min_time, initial=0) as pbar:
-                self.mass_spec.run(min_time, max_time, pbar=pbar)
-        else:
-            self.mass_spec.run(min_time, max_time)
 
     def handle_acquisition_open(self):
         self.logger.info('Acquisition open')
@@ -385,78 +356,6 @@ class DiaWindows(object):
             raise ValueError("Incorrect dia_design selected. Must be 'basic' or 'kaufmann'.")
 
 
-class DsDAController(Controller):
-    def __init__(self, mass_spec, N, isolation_window, rt_tol, min_ms1_intensity):
-        super().__init__(mass_spec)
-        self.last_ms1_scan = None
-        self.N = N
-        self.isolation_window = isolation_window  # the isolation window (in Dalton) around a precursor ion to be fragmented
-        self.rt_tol = rt_tol  # the rt window to prevent the same precursor ion to be fragmented again
-        self.min_ms1_intensity = min_ms1_intensity  # minimum ms1 intensity to fragment
-
-        mass_spec.reset()
-        mass_spec.current_N = N
-        mass_spec.current_DEW = rt_tol
-
-        # register new event handlers under this controller
-        mass_spec.register(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.handle_scan)
-        mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING, self.handle_acquisition_open)
-        mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING, self.handle_acquisition_closing)
-
-    def run(self, schedule_file, progress_bar=True):
-        self.schedule = pd.read_csv(schedule_file)
-        for idx, row in self.schedule.iterrows():
-            target_mass = row.targetMass
-            target_time = row.targetTime
-
-            if np.isnan(target_mass):
-                ms_level = 1
-                isolation_windows = [[(0, 1000)]]
-                precursor = None
-            else:
-                ms_level = 2
-                mz_lower = target_mass - self.isolation_window
-                mz_upper = target_mass + self.isolation_window
-                isolation_windows = [[(mz_lower, mz_upper)]]
-                precursor_charge = +1 if (self.mass_spec.ionisation_mode == POSITIVE) else -1
-                scan_id = 0
-                precursor = Precursor(precursor_mz=target_mass, precursor_intensity=0,
-                                      precursor_charge=precursor_charge, precursor_scan_id=scan_id)
-
-            dda_scan_params = ScanParameters()
-            dda_scan_params.set(ScanParameters.MS_LEVEL, ms_level)
-            dda_scan_params.set(ScanParameters.ISOLATION_WINDOWS, isolation_windows)
-            dda_scan_params.set(ScanParameters.TIME, target_time)
-            if precursor:
-                dda_scan_params.set(ScanParameters.PRECURSOR, precursor)
-            self.mass_spec.add_to_processing_queue(dda_scan_params)  # push this scan to the mass spec queue
-
-        if progress_bar:
-            with tqdm(total=target_time,
-                      initial=0) as pbar:
-                self.mass_spec.run(self.schedule, pbar=pbar)
-        else:
-            self.mass_spec.run(self.schedule)
-
-    def handle_acquisition_open(self):
-        self.logger.info('Acquisition open')
-
-    def handle_acquisition_closing(self):
-        self.logger.info('Acquisition closing')
-
-    def _process_scan(self, scan):
-        self.logger.info('Received {}'.format(scan))
-        if scan.ms_level == 1:  # we get an ms1 scan, store it for fragmentation next time
-            self.last_ms1_scan = scan
-        elif scan.ms_level == 2:  # if we get ms2 scan, then do something with it
-            # scan.filter_intensity(self.min_ms2_intensity)
-            if scan.num_peaks > 0:
-                self._plot_scan(scan)
-
-    def _update_parameters(self, scan):
-        pass
-
-
 class HybridController(Controller):
     def __init__(self, mass_spec, N, scan_param_changepoints, isolation_window, mz_tol, rt_tol, min_ms1_intensity,
                  n_purity_scans=None, purity_shift=None, purity_threshold=0):
@@ -477,7 +376,8 @@ class HybridController(Controller):
         self.purity_threshold = purity_threshold
 
         # make sure the input are all correct
-        assert len(self.N) == len(self.scan_param_changepoints) == len(self.isolation_window) == len(self.mz_tol) == len(self.rt_tol)
+        assert len(self.N) == len(self.scan_param_changepoints) == len(self.isolation_window) == len(
+            self.mz_tol) == len(self.rt_tol)
         if self.purity_threshold != 0:
             assert all(self.n_purity_scans < np.array(self.N))
 
@@ -495,16 +395,6 @@ class HybridController(Controller):
         mass_spec.register(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.handle_scan)
         mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING, self.handle_acquisition_open)
         mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING, self.handle_acquisition_closing)
-
-    def run(self, min_time=None, max_time=None, progress_bar=True):
-        if min_time is None and max_time is None:
-            min_time = self.mass_spec.schedule["targetTime"].values[0]
-            max_time = self.mass_spec.schedule["targetTime"].values[-1]
-        if progress_bar:
-            with tqdm(total=max_time - min_time, initial=0) as pbar:
-                self.mass_spec.run(min_time, max_time, pbar=pbar)
-        else:
-            self.mass_spec.run(min_time, max_time)
 
     def handle_acquisition_open(self):
         self.logger.info('Time %f Acquisition open' % self.mass_spec.time)
@@ -542,7 +432,8 @@ class HybridController(Controller):
             # calculate purities
             purities = []
             for mz_idx in range(len(self.last_ms1_scan.mzs)):
-                nearby_mzs_idx = np.where(abs(self.last_ms1_scan.mzs - self.last_ms1_scan.mzs[mz_idx]) < current_isolation_window)
+                nearby_mzs_idx = np.where(
+                    abs(self.last_ms1_scan.mzs - self.last_ms1_scan.mzs[mz_idx]) < current_isolation_window)
                 if len(nearby_mzs_idx[0]) == 1:
                     purities.append(1)
                 else:
@@ -565,7 +456,7 @@ class HybridController(Controller):
                 if intensity < self.min_ms1_intensity:
                     self.logger.debug(
                         'Time %f Minimum intensity threshold %f reached at %f, %d' % (
-                        self.mass_spec.time, self.min_ms1_intensity, intensity, fragmented_count))
+                            self.mass_spec.time, self.min_ms1_intensity, intensity, fragmented_count))
                     break
 
                 # skip ion in the dynamic exclusion list of the mass spec
@@ -573,7 +464,8 @@ class HybridController(Controller):
                     continue
 
                 if purity < self.purity_threshold:
-                    purity_shift_amounts = [self.purity_shift * (i - (self.n_purity_scans - 1) / 2) for i in range(self.n_purity_scans)]
+                    purity_shift_amounts = [self.purity_shift * (i - (self.n_purity_scans - 1) / 2) for i in
+                                            range(self.n_purity_scans)]
                     for purity_idx in range(self.n_purity_scans):
                         # send a new ms2 scan parameter to the mass spec
                         dda_scan_params = ScanParameters()
@@ -608,7 +500,8 @@ class HybridController(Controller):
                     # create precursor object, assume it's all singly charged
                     precursor_charge = +1 if (self.mass_spec.ionisation_mode == POSITIVE) else -1
                     precursor = Precursor(precursor_mz=mz, precursor_intensity=intensity,
-                                          precursor_charge=precursor_charge, precursor_scan_id=self.last_ms1_scan.scan_id)
+                                          precursor_charge=precursor_charge,
+                                          precursor_scan_id=self.last_ms1_scan.scan_id)
                     mz_lower = mz - current_isolation_window  # Da
                     mz_upper = mz + current_isolation_window  # Da
                     isolation_windows = [[(mz_lower, mz_upper)]]
