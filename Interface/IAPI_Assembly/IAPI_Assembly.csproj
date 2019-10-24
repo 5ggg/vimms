@@ -5,9 +5,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="API-1.1">
-      <HintPath>..\iapi_lib\API-1.1.dll</HintPath>
-    </Reference>
+    <PackageReference Include="PSI_Interface" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="API-2.0">
       <HintPath>..\iapi_lib\API-2.0.dll</HintPath>
     </Reference>

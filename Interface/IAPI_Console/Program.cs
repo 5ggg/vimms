@@ -15,7 +15,7 @@ namespace IAPI_Console
             // IFusionInstrumentAccessContainer fusionContainer = Factory<IFusionInstrumentAccessContainer>.Create();
 
             // Above won't work without a license! For testing, use the following FusionContainer that loads data from an mzML file.
-            string filename = "C:\\Users\\joewa\\Work\\git\\clms\\test_data\\Beer_1_full1.mzML";
+            string filename = "C:\\Users\\joewa\\University of Glasgow\\Vinny Davies - CLDS Metabolomics Project\\Data\\multibeers_urine_data\\beers\\fragmentation\\mzML\\Beer_multibeers_1_T10_POS.mzML";
             IFusionInstrumentAccessContainer fusionContainer = new FusionContainer(filename);
 
             // Connect to the service by going 'online'

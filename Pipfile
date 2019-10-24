@@ -24,6 +24,7 @@ ipyparallel = "*"
 seaborn = "*"
 requests = "*"
 trio = "*"
+pythonnet = {version = "*",os_name = "== 'nt'"}
 
 [dev-packages]
 
