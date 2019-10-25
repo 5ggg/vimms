@@ -2,6 +2,7 @@ import math
 from collections import defaultdict
 
 import numpy as np
+import trio
 from events import Events
 
 from vimms.Common import LoggerMixin, adduct_transformation
@@ -192,6 +193,7 @@ class IndependentMassSpectrometer(LoggerMixin):
         # current task queue
         self.processing_queue = []
         self.repeating_scan_parameters = None
+        self.environment = None
 
         # the events here follows IAPI events
         self.events = Events((self.MS_SCAN_ARRIVED, self.ACQUISITION_STREAM_OPENING, self.ACQUISITION_STREAM_CLOSING,))
@@ -226,59 +228,48 @@ class IndependentMassSpectrometer(LoggerMixin):
         self.dynamic_exclusion = dynamic_exclusion
         self.exclusion_list = []  # a list of ExclusionItem
 
+
     ####################################################################################################################
     # Public methods
     ####################################################################################################################
 
-    def run(self, min_time, max_time, pbar=None):
+    def step(self):
         """
-        Simulates running the mass spec from min_time to max_time
-        :param min_time: start time
-        :param max_time: end time
-        :param pbar: progress bar
-        :return: None
+        Performs one step of a mass spectrometry process
+        :return:
         """
-        self.time = min_time
-        self.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING)
+
+        # get scan param from the processing queue and do one scan
+        param = self._get_param()
+        scan = self._get_scan(self.time, param)
+
+        # notify the controller that a new scan has been generated
+        # at this point, the MS_SCAN_ARRIVED event handler in the controller is called
+        # and the processing queue will be updated with new sets of scan parameters to do
+        self.fire_event(self.MS_SCAN_ARRIVED, scan)
+
+        # sample scan duration and increase internal time
+        current_level = scan.ms_level
+        current_N = self.current_N
+        current_DEW = self.current_DEW
         try:
-            while self.time < max_time:
+            next_scan_param = self.get_processing_queue()[0]
+        except IndexError:
+            next_scan_param = None
 
-                # get scan param from the processing queue and do one scan
-                param = self._get_param()
-                scan = self._get_scan(self.time, param)
+        current_scan_duration = self._increase_time(current_level, current_N, current_DEW,
+                                                    next_scan_param)
+        scan.scan_duration = current_scan_duration
 
-                # notify the controller that a new scan has been generated
-                # at this point, the MS_SCAN_ARRIVED event handler in the controller is called
-                # and the processing queue will be updated with new sets of scan parameters to do
-                self.fire_event(self.MS_SCAN_ARRIVED, scan)
+        # add precursor and DEW information based on the current scan produced
+        # the DEW list update must be done after time has been increased
+        self._add_precursor_info(param, scan)
+        if self.dynamic_exclusion:
+            self._manage_dynamic_exclusion_list(param, scan)
 
-                # sample scan duration and increase internal time
-                current_level = scan.ms_level
-                current_N = self.current_N
-                current_DEW = self.current_DEW
-                try:
-                    next_scan_param = self.get_processing_queue()[0]
-                except IndexError:
-                    next_scan_param = None
-                current_scan_duration = self._increase_time(current_level, current_N, current_DEW,
-                                                            next_scan_param)
-                scan.scan_duration = current_scan_duration
-
-                # add precursor and DEW information based on the current scan produced
-                # the DEW list update must be done after time has been increased
-                self._add_precursor_info(param, scan)
-                if self.dynamic_exclusion:
-                    self._manage_dynamic_exclusion_list(param, scan)
-
-                # stores the updated value of N and DEW
-                self._store_next_N_DEW(next_scan_param)
-
-                # update progress bar
-                self._update_progress_bar(current_scan_duration, pbar, scan)
-        finally:
-            self.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING)
-            if pbar is not None:
-                pbar.close()
+        # stores the updated value of N and DEW
+        self._store_next_N_DEW(next_scan_param)
+        return scan
 
     def get_processing_queue(self):
         """
@@ -354,13 +345,17 @@ class IndependentMassSpectrometer(LoggerMixin):
         if event_name not in self.event_dict:
             raise ValueError('Unknown event name')
 
-        # pretend to fire the event
-        # actually here we just runs the event handler method directly
         e = self.event_dict[event_name]
-        if arg is not None:
-            e(arg)
+        if event_name == self.MS_SCAN_ARRIVED: # if it's a scan event, then pass the scan to the controller
+            scan = arg
+            self.environment.add_scan(scan)
         else:
-            e()
+            # pretend to fire the event
+            # actually here we just runs the event handler method directly
+            if arg is not None:
+                e(arg)
+            else:
+                e()
 
     def register(self, event_name, handler):
         """
@@ -505,23 +500,6 @@ class IndependentMassSpectrometer(LoggerMixin):
             self.current_N = next_N
         if next_DEW is not None:
             self.current_DEW = next_DEW
-
-    def _update_progress_bar(self, elapsed, pbar, scan):
-        """
-        Updates progress bar based on elapsed time
-        :param elapsed: Elapsed time to increment the progress bar
-        :param pbar: progress bar object
-        :param scan: the newly generated scan
-        :return: None
-        """
-        if pbar is not None:
-            if self.current_N > 0 and self.current_DEW > 0:
-                msg = '(%.3fs) ms_level=%d N=%d DEW=%d' % (self.time, scan.ms_level,
-                                                           self.current_N, self.current_DEW)
-            else:
-                msg = '(%.3fs) ms_level=%d' % (self.time, scan.ms_level)
-            pbar.update(elapsed)
-            pbar.set_description(msg)
 
     ####################################################################################################################
     # Scan generation methods
@@ -678,3 +656,50 @@ class IndependentMassSpectrometer(LoggerMixin):
             if window[0] < self._get_mz(chemical, query_rt, which_isotope, which_adduct) <= window[1]:
                 return True
         return False
+
+
+class AsyncMassSpectrometer(IndependentMassSpectrometer):
+
+    def __init__(self, ionisation_mode, chemicals, peak_sampler, spectra_send_channel, task_receive_channel,
+                 add_noise=False, dynamic_exclusion=True):
+        super().__init__(ionisation_mode, chemicals, peak_sampler, add_noise, dynamic_exclusion)
+        self.spectra_send_channel = spectra_send_channel
+        self.task_receive_channel = task_receive_channel
+
+    def _get_param(self):
+        # get current task
+        # check if there's a new task from the controller, if yes then add to task queue
+        try:
+            received = self.task_receive_channel.receive_nowait()
+            received_tasks = received['tasks']
+            received_scan = received['scan']
+            print('mass_spec received %d new tasks for %s' % (len(received_tasks), received_scan))
+            self.processing_queue.extend(received_tasks)
+        except trio.WouldBlock:  # no new task
+            pass
+
+        # if the processing queue is empty, then just do the repeating scan
+        if len(self.processing_queue) == 0:
+            param = self.repeating_scan_parameters
+        else:
+            # otherwise pop the parameter for the next scan from the queue
+            param = self.processing_queue.pop(0)
+        return param
+
+    async def fire_event(self, event_name, arg=None):
+        if event_name not in self.event_dict:
+            raise ValueError('Unknown event name')
+
+        if event_name == self.MS_SCAN_ARRIVED:  # add new scan to spectra send channel
+            assert arg is not None
+            scan = arg
+            await self.spectra_send_channel.send(scan)
+            print('mass_spec sent', scan)
+        else:
+            # pretend to fire the event
+            # actually here we just runs the event handler method directly
+            e = self.event_dict[event_name]
+            if arg is not None:
+                e(arg)
+            else:
+                e()
