@@ -2,14 +2,19 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, Matern
 
 from pyDOE import *
+from pathlib import Path
 
 from vimms.Controller import *
-from vimms.PythonMzmine import pick_peaks
+from vimms.PythonMzmine import pick_peaks, controller_score
+from vimms.Common import *
 import os, glob
 
-MZMINE_COMMAND = 'C:\\Users\\Vinny\\work\\MZmine-2.40.1\\MZmine-2.40.1\\startMZmine_Windows.bat'
 
-MZML2CHEMS_DICT = {'min_ms1_intensity': 1.75E5,
+MZMINE_COMMAND = 'C:\\Users\\Vinny\\work\\MZmine-2.40.1\\MZmine-2.40.1\\startMZmine_Windows.bat'
+XML_TEMPLATE_MS1 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\mzmine_batch_ms1.xml'
+XML_TEMPLATE_MS2 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\mzmine_batch_ms2.xml'
+
+QCB_MZML2CHEMS_DICT = {'min_ms1_intensity': 1.75E5,
                   'mz_tol': 10,
                   'mz_units':'ppm',
                   'min_length':1,
@@ -18,7 +23,7 @@ MZML2CHEMS_DICT = {'min_ms1_intensity': 1.75E5,
                   'stop_rt':21*60
 }
 
-def mzml2chems(mzml_file, ps, param_dict=MZML2CHEMS_DICT, output_dir = True):
+def mzml2chems(mzml_file, ps, param_dict=QCB_MZML2CHEMS_DICT, output_dir = True):
     good_roi, junk = make_roi(mzml_file, mz_tol=param_dict['mz_tol'], mz_units=param_dict['mz_units'],
                               min_length=param_dict['min_length'], min_intensity=param_dict['min_intensity'],
                               start_rt=param_dict['start_rt'], stop_rt=param_dict['stop_rt'])
@@ -35,6 +40,64 @@ def mzml2chems(mzml_file, ps, param_dict=MZML2CHEMS_DICT, output_dir = True):
         save_obj(dataset, dataset_name)
     return dataset
 
+
+
+class TopN_GridSearch(object):
+    def __init__(self, ms1_mzml, base_dir, N, DEW, ps, chem_param_dict, controller_param_dict, score_param_dict,
+                 ms1_picked_peaks_file=None, dataset=None, parallel=False, add_noise=True,
+                 xml_template_ms1=XML_TEMPLATE_MS1,
+                 xml_template_ms2=XML_TEMPLATE_MS2,
+                 mzmine_command=MZMINE_COMMAND):
+        # make and set directories
+        os.mkdir(base_dir + '\\' + Path(ms1_mzml).stem + '_TopN_Results')
+        output_dir = base_dir + '\\' + Path(ms1_mzml).stem + '_TopN_Results'
+        os.mkdir(output_dir + '//ms1_dir')
+        ms1_dir = output_dir + '//ms1_dir'
+        os.mkdir(output_dir + '//ms2_dir')
+        ms2_dir = output_dir + '//ms2_dir'
+        os.mkdir(output_dir + '//picked_peaks')
+        picked_peaks_dir = output_dir + '//picked_peaks'
+
+        # Load data
+        if dataset is None:
+            dataset = mzml2chems(ms1_mzml, ps, chem_param_dict)
+        else:
+            dataset = load_obj(dataset)
+        if ms1_picked_peaks_file is None:
+            pick_peaks([ms1_mzml], xml_template=xml_template_ms1, output_dir=picked_peaks_dir,
+                       mzmine_command=mzmine_command)
+            ms1_picked_peaks_file = picked_peaks_dir + '\\' + Path(ms1_mzml).stem + '.csv'
+
+        if parallel is False:
+            # set up mass spec
+            mass_spec = IndependentMassSpectrometer(POSITIVE, dataset, ps, add_noise=add_noise)
+
+            # run controllers
+            for current_N in N:
+                for current_DEW in DEW:
+                    controller = TopNController(mass_spec, N, controller_param_dict["isolation_window"],
+                                                controller_param_dict["mz_tol"], controller_param_dict["rt_tol"],
+                                                controller_param_dict["min_ms1_intensity"])
+                    controller.run(controller_param_dict["rt_range"][0][0], controller_param_dict["rt_range"][0][1])
+
+                    controller_name = 'controller_' + current_N + '_' + current_DEW
+                    controller.write_mzML('my_analysis', os.path.join(ms2_dir, controller_name + '.mzml'))
+                    save_obj(controller, os.path.join(ms2_dir, controller_name + '.p'))
+
+                    file_list = glob.glob(os.path.join(ms2_dir, '*.mzML'))
+                    pick_peaks(file_list[:3], xml_template=xml_template_ms2, output_dir=picked_peaks_dir,
+                               mzmine_command=MZMINE_COMMAND)
+
+                    ms2_picked_peaks_file = output_dir + '//' + controller_name + '.csv'
+
+                   controller_score(controller, dataset, ms1_picked_peaks_file, ms2_picked_peaks_file,
+                                     score_param_dict['min_ms1_intensity'], score_param_dict['matching_mz_tol'],
+                                     score_param_dict['matching_rt_tol'])
+        else:
+            None
+
+    def heat_map(self):
+        return None
 
 # class BOMAS(object):
 #     def _init_(self, experiment_name, theta_range, n_init, n_BO, ps, base_folder, samples=None, ms1_mzmls=None,
