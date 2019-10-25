@@ -123,3 +123,8 @@ examples/example_data/
 example_data/
 examples/DsDA/
 scripts/*.bat
+Interface/.vs/
+Interface/IAPI_Assembly/bin/Debug/
+Interface/IAPI_Assembly/obj/
+Interface/IAPI_Console/bin/
+Interface/IAPI_Console/obj/

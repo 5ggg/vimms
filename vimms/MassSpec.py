@@ -1,9 +1,8 @@
 import math
 from collections import defaultdict
-from collections import namedtuple
 
 import numpy as np
-import pandas as pd
+import trio
 from events import Events
 
 from vimms.Common import LoggerMixin, adduct_transformation
@@ -47,7 +46,7 @@ class Scan(object):
     """
 
     def __init__(self, scan_id, mzs, intensities, ms_level, rt, scan_duration=None, isolation_windows=None,
-                 parent=None):
+                 parent=None, param=None):
         """
         Creates a scan
         :param scan_id: current scan id
@@ -58,6 +57,7 @@ class Scan(object):
         :param scan_duration: how long this scan takes, if known.
         :param isolation_windows: the window to isolate precursor peak, if known
         :param parent: parent precursor peak, if known
+        :param param: scan parameters, if known
         """
         assert len(mzs) == len(intensities)
         self.scan_id = scan_id
@@ -74,6 +74,7 @@ class Scan(object):
         self.scan_duration = scan_duration
         self.isolation_windows = isolation_windows
         self.parent = parent
+        self.param = param
 
     def __repr__(self):
         return 'Scan %d num_peaks=%d rt=%.2f ms_level=%d' % (self.scan_id, self.num_peaks, self.rt, self.ms_level)
@@ -177,28 +178,24 @@ class IndependentMassSpectrometer(LoggerMixin):
     ACQUISITION_STREAM_OPENING = 'AcquisitionStreamOpening'
     ACQUISITION_STREAM_CLOSING = 'AcquisitionStreamClosing'
 
-    def __init__(self, ionisation_mode, chemicals, peak_sampler,
-                 schedule_file=None, add_noise=False, dynamic_exclusion=True):
+    def __init__(self, ionisation_mode, chemicals, peak_sampler, add_noise=False):
         """
         Creates a mass spec object.
         :param ionisation_mode: POSITIVE or NEGATIVE
         :param chemicals: a list of Chemical objects in the dataset
         :param peak_sampler: an instance of DataGenerator.PeakSampler object
-        :param schedule_file: path to schedule (CSV) file in DsDA format
         :param add_noise: a flag to indicate whether to add noise
-        :param dynamic_exclusion: a flag to indicate whether to perform dynamic exclusion
+        :param use_exclusion_list: a flag to indicate whether to perform dynamic exclusion
         """
 
-        # current scan index, internal time and schedule file if provided
+        # current scan index and internal time
         self.idx = 0
         self.time = 0
-        self.schedule_file = schedule_file
-        if self.schedule_file is not None:
-            self.schedule = pd.read_csv(schedule_file)
 
         # current task queue
-        self.task_queue = []
+        self.processing_queue = []
         self.repeating_scan_parameters = None
+        self.environment = None
 
         # the events here follows IAPI events
         self.events = Events((self.MS_SCAN_ARRIVED, self.ACQUISITION_STREAM_OPENING, self.ACQUISITION_STREAM_CLOSING,))
@@ -224,83 +221,59 @@ class IndependentMassSpectrometer(LoggerMixin):
         self.current_N = 0
         self.current_DEW = 0
 
-        # stores the mapping between precursor peak to ms2 scans
-        self.precursor_information = defaultdict(list)  # key: Precursor object, value: ms2 scans
         self.add_noise = add_noise  # whether to add noise to the generated fragment peaks
         self.fragmentation_events = []  # which chemicals produce which peaks
-
-        # for dynamic exclusion window
-        self.dynamic_exclusion = dynamic_exclusion
-        self.exclusion_list = []  # a list of ExclusionItem
 
     ####################################################################################################################
     # Public methods
     ####################################################################################################################
 
-    def run(self, min_time, max_time, pbar=None):
+    def step(self):
         """
-        Simulates running the mass spec from min_time to max_time
-        :param min_time: start time
-        :param max_time: end time
-        :param pbar: progress bar
-        :return: None
+        Performs one step of a mass spectrometry process
+        :return:
         """
-        max_time = self._init_time(max_time, min_time)
-        self.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING)
+
+        # get scan param from the processing queue and do one scan
+        param = self._get_param()
+        scan = self._get_scan(self.time, param)
+
+        # notify the controller that a new scan has been generated
+        # at this point, the MS_SCAN_ARRIVED event handler in the controller is called
+        # and the processing queue will be updated with new sets of scan parameters to do
+        self.fire_event(self.MS_SCAN_ARRIVED, scan)
+
+        # sample scan duration and increase internal time
+        current_level = scan.ms_level
+        current_N = self.current_N
+        current_DEW = self.current_DEW
         try:
-            while self.time < max_time:
+            next_scan_param = self.get_processing_queue()[0]
+        except IndexError:
+            next_scan_param = None
 
-                # get scan param from the processing queue and do one scan
-                param = self._get_param()
-                scan = self._get_scan(self.time, param)
+        current_scan_duration = self._increase_time(current_level, current_N, current_DEW,
+                                                    next_scan_param)
+        scan.scan_duration = current_scan_duration
 
-                # notify the controller that a new scan has been generated
-                # at this point, the MS_SCAN_ARRIVED event handler in the controller is called
-                # and the processing queue will be updated with new sets of scan parameters to do
-                self.fire_event(self.MS_SCAN_ARRIVED, scan)
+        # stores the updated value of N and DEW
+        self._store_next_N_DEW(next_scan_param)
+        return scan
 
-                # sample scan duration and increase internal time
-                current_level = scan.ms_level
-                current_N = self.current_N
-                current_DEW = self.current_DEW
-                try:
-                    next_scan_param = self.get_task_queue()[0]
-                except IndexError:
-                    next_scan_param = None
-                current_scan_duration = self._increase_time(current_level, current_N, current_DEW,
-                                                            next_scan_param)
-                scan.scan_duration = current_scan_duration
-
-                # add precursor and DEW information based on the current scan produced
-                # the DEW list update must be done after time has been increased
-                self._add_precursor_info(param, scan)
-                if self.dynamic_exclusion:
-                    self._manage_dynamic_exclusion_list(param, scan)
-
-                # stores the updated value of N and DEW
-                self._store_next_N_DEW(next_scan_param)
-
-                # update progress bar
-                self._update_progress_bar(current_scan_duration, pbar, scan)
-        finally:
-            self.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING)
-            if pbar is not None:
-                pbar.close()
-
-    def get_task_queue(self):
+    def get_processing_queue(self):
         """
         Returns the current processing queue
         :return:
         """
-        return self.task_queue
+        return self.processing_queue
 
-    def add_task(self, param):
+    def add_to_processing_queue(self, param):
         """
         Adds a new scan parameters to the processing queue of scan parameters. Usually done by the controllers.
         :param param: the scan parameters to add
         :return: None
         """
-        self.task_queue.append(param)
+        self.processing_queue.append(param)
 
     def disable_repeating_scan(self):
         """
@@ -326,30 +299,11 @@ class IndependentMassSpectrometer(LoggerMixin):
             self.clear(key)
         self.time = 0
         self.idx = 0
-        self.task_queue = []
+        self.processing_queue = []
         self.repeating_scan_parameters = None
         self.current_N = 0
         self.current_DEW = 0
-        self.precursor_information = defaultdict(list)
         self.fragmentation_events = []
-        self.exclusion_list = []
-
-    def is_excluded(self, mz, rt):
-        """
-        Checks if a pair of (mz, rt) value is currently excluded by dynamic exclusion window
-        :param mz: m/z value
-        :param rt: RT value
-        :return: True if excluded, False otherwise
-        """
-        # TODO: make this faster?
-        for x in self.exclusion_list:
-            exclude_mz = x.from_mz <= mz <= x.to_mz
-            exclude_rt = x.from_rt <= rt <= x.to_rt
-            if exclude_mz and exclude_rt:
-                self.logger.debug(
-                    'Time {:.6f} Excluded precursor ion mz {:.4f} rt {:.2f} because of {}'.format(self.time, mz, rt, x))
-                return True
-        return False
 
     def fire_event(self, event_name, arg=None):
         """
@@ -361,13 +315,17 @@ class IndependentMassSpectrometer(LoggerMixin):
         if event_name not in self.event_dict:
             raise ValueError('Unknown event name')
 
-        # pretend to fire the event
-        # actually here we just runs the event handler method directly
         e = self.event_dict[event_name]
-        if arg is not None:
-            e(arg)
+        if event_name == self.MS_SCAN_ARRIVED: # if it's a scan event, then pass the scan to the controller
+            scan = arg
+            self.environment.add_scan(scan)
         else:
-            e()
+            # pretend to fire the event
+            # actually here we just runs the event handler method directly
+            if arg is not None:
+                e(arg)
+            else:
+                e()
 
     def register(self, event_name, handler):
         """
@@ -396,52 +354,34 @@ class IndependentMassSpectrometer(LoggerMixin):
     # Private methods
     ####################################################################################################################
 
-    def _init_time(self, max_time, min_time):
-        """
-        Sets initial mass spec time
-        :param max_time: end time
-        :param min_time: start time
-        :return: a new end time, if it's read from DsDA CSV file, otherwise it's the same
-        """
-        if self.schedule_file is None:
-            self.time = min_time
-        else:
-            self.time = self.schedule["targetTime"].values[0]
-            max_time = self.schedule["targetTime"].values[-1]
-        return max_time
-
     def _get_param(self):
         """
         Retrieves a new set of scan parameters from the processing queue
         :return: A new set of scan parameters from the queue if available, otherwise it returns the default scan params.
         """
         # if the processing queue is empty, then just do the repeating scan
-        if len(self.task_queue) == 0:
+        if len(self.processing_queue) == 0:
             param = self.repeating_scan_parameters
         else:
             # otherwise pop the parameter for the next scan from the queue
-            param = self.task_queue.pop(0)
+            param = self.processing_queue.pop(0)
         return param
 
     def _increase_time(self, current_level, current_N, current_DEW, next_scan_param):
         # look into the queue, find out what the next scan ms_level is, and compute the scan duration
         # only applicable for simulated mass spec, since the real mass spec can generate its own scan duration.
         self.idx += 1
-        if self.schedule_file is None:
-            if next_scan_param is None:  # if queue is empty, the next one is an MS1 scan by default
-                next_level = 1
-            else:
-                next_level = next_scan_param.get(ScanParameters.MS_LEVEL)
-
-            # sample current scan duration based on current_DEW, current_N, current_level and next_level
-            current_scan_duration = self._sample_scan_duration(current_DEW, current_N,
-                                                               current_level, next_level)
+        if next_scan_param is None:  # if queue is empty, the next one is an MS1 scan by default
+            next_level = 1
         else:
-            new_time = self.schedule["targetTime"][self.idx]
-            current_scan_duration = new_time - self.time
+            next_level = next_scan_param.get(ScanParameters.MS_LEVEL)
+
+        # sample current scan duration based on current_DEW, current_N, current_level and next_level
+        current_scan_duration = self._sample_scan_duration(current_DEW, current_N,
+                                                           current_level, next_level)
 
         self.time += current_scan_duration
-        self.logger.info('Time %f Len(queue)=%d' % (self.time, len(self.task_queue)))
+        self.logger.info('Time %f Len(queue)=%d' % (self.time, len(self.processing_queue)))
         return current_scan_duration
 
     def _sample_scan_duration(self, current_DEW, current_N, current_level, next_level):
@@ -459,57 +399,6 @@ class IndependentMassSpectrometer(LoggerMixin):
                                                                      N=current_N, DEW=current_DEW)
         current_scan_duration = current_scan_duration.flatten()[0]
         return current_scan_duration
-
-    def _add_precursor_info(self, param, scan):
-        """
-            Adds precursor ion information.
-            If MS2 and above, and controller tells us which precursor ion the scan is coming from, store it
-        :param param: a scan parameter object
-        :param scan: the newly generated scan
-        :return: None
-        """
-        precursor = param.get(ScanParameters.PRECURSOR)
-        if scan.ms_level >= 2 and precursor is not None:
-            isolation_windows = param.get(ScanParameters.ISOLATION_WINDOWS)
-            iso_min = isolation_windows[0][0][0]
-            iso_max = isolation_windows[0][0][1]
-            self.logger.debug('Time {:.6f} Isolated precursor ion {:.4f} at ({:.4f}, {:.4f})'.format(self.time,
-                                                                                                     precursor.precursor_mz,
-                                                                                                     iso_min,
-                                                                                                     iso_max))
-            self.precursor_information[precursor].append(scan)
-
-    def _manage_dynamic_exclusion_list(self, param, scan):
-        """
-        Manages dynamic exclusion list
-        :param param: a scan parameter object
-        :param scan: the newly generated scan
-        :return: None
-        """
-        precursor = param.get(ScanParameters.PRECURSOR)
-        if scan.ms_level >= 2 and precursor is not None:
-            # add dynamic exclusion item to the exclusion list to prevent the same precursor ion being fragmented
-            # multiple times in the same mz and rt window
-            # Note: at this point, fragmentation has occurred and time has been incremented! so the time when
-            # items are checked for dynamic exclusion is the time when MS2 fragmentation occurs
-            # TODO: we need to add a repeat count too, i.e. how many times we've seen a fragment peak before
-            #  it gets excluded (now it's basically 1)
-            mz = precursor.precursor_mz
-            mz_tol = param.get(ScanParameters.DYNAMIC_EXCLUSION_MZ_TOL)
-            rt_tol = param.get(ScanParameters.DYNAMIC_EXCLUSION_RT_TOL)
-            mz_lower = mz * (1 - mz_tol / 1e6)
-            mz_upper = mz * (1 + mz_tol / 1e6)
-            rt_lower = self.time
-            rt_upper = self.time + rt_tol
-            x = ExclusionItem(from_mz=mz_lower, to_mz=mz_upper, from_rt=rt_lower, to_rt=rt_upper)
-            self.logger.debug('Time {:.6f} Created dynamic exclusion window mz ({}-{}) rt ({}-{})'.format(
-                self.time,
-                x.from_mz, x.to_mz, x.from_rt, x.to_rt
-            ))
-            self.exclusion_list.append(x)
-
-        # remove expired items from dynamic exclusion list
-        self.exclusion_list = list(filter(lambda x: x.to_rt > self.time, self.exclusion_list))
 
     def _store_next_N_DEW(self, next_scan_param):
         """
@@ -530,23 +419,6 @@ class IndependentMassSpectrometer(LoggerMixin):
             self.current_N = next_N
         if next_DEW is not None:
             self.current_DEW = next_DEW
-
-    def _update_progress_bar(self, elapsed, pbar, scan):
-        """
-        Updates progress bar based on elapsed time
-        :param elapsed: Elapsed time to increment the progress bar
-        :param pbar: progress bar object
-        :param scan: the newly generated scan
-        :return: None
-        """
-        if pbar is not None:
-            if self.current_N > 0 and self.current_DEW > 0:
-                msg = '(%.3fs) ms_level=%d N=%d DEW=%d' % (self.time, scan.ms_level,
-                                                           self.current_N, self.current_DEW)
-            else:
-                msg = '(%.3fs) ms_level=%d' % (self.time, scan.ms_level)
-            pbar.update(elapsed)
-            pbar.set_description(msg)
 
     ####################################################################################################################
     # Scan generation methods
@@ -600,7 +472,7 @@ class IndependentMassSpectrometer(LoggerMixin):
         # Note: at this point, the scan duration is not set yet because we don't know what the next scan is going to be
         # We will set it later in the get_next_scan() method after we've notified the controller that this scan is produced.
         return Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
-                    scan_duration=None, isolation_windows=isolation_windows)
+                    scan_duration=None, isolation_windows=isolation_windows, param=param)
 
     def _get_chem_indices(self, query_rt):
         rtmin_check = self.chrom_min_rts <= query_rt
@@ -705,56 +577,48 @@ class IndependentMassSpectrometer(LoggerMixin):
         return False
 
 
-class DsDAMassSpec(IndependentMassSpectrometer):
-    """
-    A mass spec class with fixed schedule time, used during DsDA experiment in the paper.
-    TODO: Could probably be removed.
-    """
+class AsyncMassSpectrometer(IndependentMassSpectrometer):
 
-    def run(self, schedule, pbar=None):
-        self.schedule = schedule
-        self.time = schedule["targetTime"][0]
-        self.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING)
+    def __init__(self, ionisation_mode, chemicals, peak_sampler, spectra_send_channel, task_receive_channel,
+                 add_noise=False, dynamic_exclusion=True):
+        super().__init__(ionisation_mode, chemicals, peak_sampler, add_noise, dynamic_exclusion)
+        self.spectra_send_channel = spectra_send_channel
+        self.task_receive_channel = task_receive_channel
 
+    def _get_param(self):
+        # get current task
+        # check if there's a new task from the controller, if yes then add to task queue
         try:
-            last_ms1_id = 0
-            while len(self.task_queue) != 0:
-                scan_params = self.task_queue.pop(0)
+            received = self.task_receive_channel.receive_nowait()
+            received_tasks = received['tasks']
+            received_scan = received['scan']
+            print('mass_spec received %d new tasks for %s' % (len(received_tasks), received_scan))
+            self.processing_queue.extend(received_tasks)
+        except trio.WouldBlock:  # no new task
+            pass
 
-                # make a scan
-                target_time = scan_params.get(ScanParameters.TIME)
-                scan = self._get_scan(target_time, scan_params)
+        # if the processing queue is empty, then just do the repeating scan
+        if len(self.processing_queue) == 0:
+            param = self.repeating_scan_parameters
+        else:
+            # otherwise pop the parameter for the next scan from the queue
+            param = self.processing_queue.pop(0)
+        return param
 
-                # set scan duration
-                try:
-                    next_time = self.task_queue[0].get(ScanParameters.TIME)
-                except IndexError:
-                    next_time = 1
-                scan.scan_duration = next_time - target_time
+    async def fire_event(self, event_name, arg=None):
+        if event_name not in self.event_dict:
+            raise ValueError('Unknown event name')
 
-                # update precursor scan id
-                if scan.ms_level == 1:
-                    last_ms1_id = scan.scan_id
-                else:
-                    precursor = scan_params.get(ScanParameters.PRECURSOR)
-                    if precursor is not None:
-                        precursor.precursor_scan_id = last_ms1_id
-                        self.precursor_information[precursor].append(scan)
-
-                # notify controller about this scan
-                self.fire_event(self.MS_SCAN_ARRIVED, scan)
-
-                # increase mass spec time
-                self.idx += 1
-                self.time += scan.scan_duration
-
-                # print a progress bar if provided
-                if pbar is not None:
-                    elapsed = self.time
-                    pbar.update(elapsed)
-                    # TODO: fix error bar
-
-        finally:
-            self.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING)
-            if pbar is not None:
-                pbar.close()
+        if event_name == self.MS_SCAN_ARRIVED:  # add new scan to spectra send channel
+            assert arg is not None
+            scan = arg
+            await self.spectra_send_channel.send(scan)
+            print('mass_spec sent', scan)
+        else:
+            # pretend to fire the event
+            # actually here we just runs the event handler method directly
+            e = self.event_dict[event_name]
+            if arg is not None:
+                e(arg)
+            else:
+                e()

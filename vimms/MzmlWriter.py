@@ -97,10 +97,11 @@ class MzmlWriter(object):
 
         # get precursor information for each scan, if available
         scan_precursor = {}
-        for precursor, ms2_scans in precursor_information.items():
-            assert len(ms2_scans) == 1
-            ms2_scan = ms2_scans[0]
-            scan_precursor[ms2_scan.scan_id] = precursor
+        if precursor_information is not None:
+            for precursor, ms2_scans in precursor_information.items():
+                assert len(ms2_scans) == 1
+                ms2_scan = ms2_scans[0]
+                scan_precursor[ms2_scan.scan_id] = precursor
 
         # write scans
         with writer.spectrum_list(count=spectrum_count):
