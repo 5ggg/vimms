@@ -78,8 +78,10 @@ def mzmine_score(controller, dataset, ms1_chems, ms2_chems, min_ms1_intensity, m
     # is fragmented below the minimum intensity.
     found_in_fullscan = list(filter(lambda x: x.found_in_fullscan, dataset))
     fn = len(found_in_fullscan) - tp
-
-    prec, rec, f1 = compute_pref_rec_f1(tp, fp, fn)
+    if tp == 0:
+        prec = rec = f1 = 0
+    else:
+        prec, rec, f1 = compute_pref_rec_f1(tp, fp, fn)
     return tp, fp, fn, prec, rec, f1
 
 
