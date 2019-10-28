@@ -20,8 +20,30 @@ QCB_MZML2CHEMS_DICT = {'min_ms1_intensity': 1.75E5,
                   'min_length':1,
                   'min_intensity':0,
                   'start_rt':3*60,
-                  'stop_rt':21*60
-}
+                  'stop_rt':21*60}
+
+MADELEINE_MZML2CHEMS_DICT = {'min_ms1_intensity': 1.75E5,
+                  'mz_tol': 10,
+                  'mz_units':'ppm',
+                  'min_length':1,
+                  'min_intensity':0,
+                  'start_rt':0,
+                  'stop_rt':600}
+
+QCB_TOP_N_CONTROLLER_PARAM_DICT = {"mz_tol":10,
+                                   "min_ms1_intensity":1.75E5,
+                                   "rt_range":[(0, 1440)],
+                                   "isolation_window":1}
+
+MADELEINE_TOP_N_CONTROLLER_PARAM_DICT = {"mz_tol":10,
+                                   "min_ms1_intensity":1.75E5,
+                                   "rt_range":[(0, 600)],
+                                   "isolation_window":1}
+
+QCB_SCORE_PARAM_DICT = {'min_ms1_intensity':0,
+                        'matching_mz_tol':30,
+                        'matching_rt_tol':10}
+
 
 def mzml2chems(mzml_file, ps, param_dict=QCB_MZML2CHEMS_DICT, output_dir = True):
     good_roi, junk = make_roi(mzml_file, mz_tol=param_dict['mz_tol'], mz_units=param_dict['mz_units'],
@@ -40,11 +62,12 @@ def mzml2chems(mzml_file, ps, param_dict=QCB_MZML2CHEMS_DICT, output_dir = True)
         save_obj(dataset, dataset_name)
     return dataset
 
-
-
 class TopN_GridSearch(object):
-    def __init__(self, ms1_mzml, base_dir, N, DEW, ps, chem_param_dict, controller_param_dict, score_param_dict,
-                 ms1_picked_peaks_file=None, dataset=None, parallel=False, add_noise=True,
+    def __init__(self, ms1_mzml, base_dir, N, DEW, ps,
+                 chem_param_dict=QCB_MZML2CHEMS_DICT,
+                 controller_param_dict=QCB_TOP_N_CONTROLLER_PARAM_DICT,
+                 score_param_dict = QCB_SCORE_PARAM_DICT,
+                 ms1_picked_peaks_file=None, dataset_file=None, parallel=False, add_noise=True,
                  xml_template_ms1=XML_TEMPLATE_MS1,
                  xml_template_ms2=XML_TEMPLATE_MS2,
                  mzmine_command=MZMINE_COMMAND):
@@ -59,10 +82,10 @@ class TopN_GridSearch(object):
         picked_peaks_dir = output_dir + '//picked_peaks'
 
         # Load data
-        if dataset is None:
+        if dataset_file is None:
             dataset = mzml2chems(ms1_mzml, ps, chem_param_dict)
         else:
-            dataset = load_obj(dataset)
+            dataset = load_obj(dataset_file)
         if ms1_picked_peaks_file is None:
             pick_peaks([ms1_mzml], xml_template=xml_template_ms1, output_dir=picked_peaks_dir,
                        mzmine_command=mzmine_command)
@@ -84,13 +107,11 @@ class TopN_GridSearch(object):
                     controller.write_mzML('my_analysis', os.path.join(ms2_dir, controller_name + '.mzml'))
                     save_obj(controller, os.path.join(ms2_dir, controller_name + '.p'))
 
-                    file_list = glob.glob(os.path.join(ms2_dir, '*.mzML'))
-                    pick_peaks(file_list[:3], xml_template=xml_template_ms2, output_dir=picked_peaks_dir,
-                               mzmine_command=MZMINE_COMMAND)
-
+                    file_list = [os.path.join(ms2_dir, controller_name + '.mzml')]
+                    pick_peaks(file_list, xml_template=xml_template_ms2, output_dir=picked_peaks_dir,mmzmine_command=MZMINE_COMMAND)
                     ms2_picked_peaks_file = output_dir + '//' + controller_name + '.csv'
 
-                   controller_score(controller, dataset, ms1_picked_peaks_file, ms2_picked_peaks_file,
+                    controller_score(controller, dataset, ms1_picked_peaks_file, ms2_picked_peaks_file,
                                      score_param_dict['min_ms1_intensity'], score_param_dict['matching_mz_tol'],
                                      score_param_dict['matching_rt_tol'])
         else:
