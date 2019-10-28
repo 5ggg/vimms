@@ -469,13 +469,42 @@ class PeakSampler(LoggerMixin):
 
     def scan_durations(self, previous_level, current_level, n_sample, N, DEW):
         # the scan durations is stored for each N and DEW combination
-        file_scan_durations = self.file_scan_durations[(N, DEW)]
         key = (previous_level, current_level,)
-        values = file_scan_durations[key]
         try:
-            return np.random.choice(values, replace=False, size=n_sample)
-        except ValueError:
+            file_scan_durations = self.file_scan_durations[(N, DEW)]
+            values = file_scan_durations[key]
+        except KeyError:  # if (N, DEW) not found in self.file_scan_durations
+
+            # if we only have one pair of (N, DEW) then use that as a default
+            if len(self.file_scan_durations) == 1:
+                selected = list(self.file_scan_durations.keys())[0]
+                file_scan_durations = self.file_scan_durations[selected]
+                values = file_scan_durations[key]
+
+            # if there are multiple (N, DEW) values, then pick the closest
+            else:
+                nodes = np.asarray(list(self.file_scan_durations.keys()))
+                node = np.array((N, DEW))
+                dist = np.sum((nodes - node) ** 2, axis=1)
+                pos = np.argmin(dist)
+                selected = tuple(nodes[pos])
+                file_scan_durations = self.file_scan_durations[selected]
+                values = file_scan_durations[key]
+
+            msg = 'No scan durations for (N=%d, DEW=%d), using (N=%d, DEW=%d) instead' % (
+            N, DEW, selected[0], selected[1])
+            self.logger.warning(msg)
+
+        if len(values) == 0: # if values are empty, then we just return an empty array
             return np.array([])
+        elif len(values) < n_sample: # if not enough values, then return them all
+            return values
+        else:  # sample scan durations without replacement
+            try:
+                sampled = np.random.choice(values, replace=False, size=n_sample)
+                return sampled
+            except ValueError:
+                return np.array([])
 
     def get_peak(self, ms_level, N=None, min_mz=None, max_mz=None, min_rt=None, max_rt=None, min_intensity=None):
         if N is None:
