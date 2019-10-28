@@ -114,7 +114,7 @@ namespace IAPI_Assembly
             {
                 // schedule events to be triggered, see https://stackoverflow.com/questions/545533/delayed-function-calls
                 SimpleSpectrum current = this.spectra[i];
-                int elutionTimeInMilliSecond = (int)(current.ElutionTime * 60 * 1000);
+                int elutionTimeInMilliSecond = (int)(current.ScanStartTime * 60 * 1000);
                 IMsScan msScan = new MyMsScan(current);
                 MsScanEventArgs args = new MyMsScanEventArgs(msScan);
                 Task.Delay(elutionTimeInMilliSecond).ContinueWith(t => OnMsScanArrived(args));
