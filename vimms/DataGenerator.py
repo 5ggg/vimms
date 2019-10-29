@@ -483,7 +483,12 @@ class PeakSampler(LoggerMixin):
 
             # if there are multiple (N, DEW) values, then pick the closest
             else:
-                nodes = np.asarray(list(self.file_scan_durations.keys()))
+                nodes = list(self.file_scan_durations.keys())
+                try:
+                    nodes.remove((0, 0))
+                except ValueError:
+                    pass
+                nodes = np.asarray(nodes)
                 node = np.array((N, DEW))
                 dist = np.sum((nodes - node) ** 2, axis=1)
                 pos = np.argmin(dist)
@@ -493,7 +498,7 @@ class PeakSampler(LoggerMixin):
 
             msg = 'No scan durations for (N=%d, DEW=%d), using (N=%d, DEW=%d) instead' % (
             N, DEW, selected[0], selected[1])
-            self.logger.warning(msg)
+            self.logger.debug(msg)
 
         if len(values) == 0: # if values are empty, then we just return an empty array
             return np.array([])
