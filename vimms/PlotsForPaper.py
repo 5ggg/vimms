@@ -483,7 +483,7 @@ def get_frag_events(controller, ms_level):
     :param ms_level: The MS-level (usually 2)
     :return: A dictionary where keys are chemicals and values are a list of fragmentation events
     '''
-    filtered_frag_events = list(filter(lambda x: x.ms_level == ms_level, controller.mass_spec.fragmentation_events))
+    filtered_frag_events = list(filter(lambda x: x.ms_level == ms_level, controller.environment.mass_spec.fragmentation_events))
     chem_to_frag_events = defaultdict(list)
     for frag_event in filtered_frag_events:
         key = frag_event.chem
