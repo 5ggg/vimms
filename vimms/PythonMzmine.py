@@ -1,7 +1,9 @@
 import os,glob
 import xml.etree.ElementTree
 import pandas as pd
+import numpy as np
 
+from vimms.Common import PROTON_MASS
 from vimms.Chemicals import UnknownChemical
 from vimms.PlotsForPaper import get_chem_frag_counts, match, update_matched_status, compute_pref_rec_f1, get_frag_events
 
@@ -40,10 +42,10 @@ def pick_peaks(file_list,
 def pick_peaks2chems(csv_file):
     df = pd.read_csv(csv_file)
     rts = df['row retention time'] * 60
-    mzs = df['row m/z']
+    mzs = df['row m/z'] - PROTON_MASS
     chems = []
     for i in range(len(rts)):
-        chem = UnknownChemical(mzs[i], rts[i], max_intensity=None, chromatogram=None, children=None)
+        chem = UnknownChemical(mzs[i], rts[i], max_intensity=0, chromatogram=None, children=None)
         chems.append(chem)
     return chems
 
@@ -52,10 +54,10 @@ def mzmine_score(controller, dataset, ms1_chems, ms2_chems, min_ms1_intensity, m
     chem_to_frag_events = get_frag_events(controller, 2)
 
     # match with xcms peak-picked ms1 data from fullscan file
-    matches_fullscan = match(dataset, ms1_chems, matching_mz_tol, matching_rt_tol, verbose=False)
+    matches_fullscan = mzmine_match(dataset, ms1_chems, matching_mz_tol, matching_rt_tol, verbose=False)
 
     # match with xcms peak-picked ms1 data from fragmentation file
-    matches_fragfile = match(dataset, ms2_chems, matching_mz_tol, matching_rt_tol, verbose=False)
+    matches_fragfile = mzmine_match(dataset, ms2_chems, matching_mz_tol, matching_rt_tol, verbose=False)
 
     # check if matched and set a flag to indicate that
     update_matched_status(dataset, matches_fullscan, matches_fragfile)
@@ -92,3 +94,42 @@ def controller_score(controller, dataset, ms1_picked_peaks_file, ms2_picked_peak
     # calculate score
     tp, fp, fn, prec, rec, f1 = mzmine_score(controller, dataset, ms1_chems, ms2_chems, min_ms1_intensity, matching_mz_tol, matching_rt_tol)
     return f1
+
+
+def mzmine_find_chem(to_find, min_rts, max_rts, min_mzs, max_mzs, chem_list):
+    query_mz = to_find.isotopes[0][0]
+    query_rt = to_find.chromatogram.rts[to_find.chromatogram.intensities.argmax()] + to_find.rt
+    min_rt_check = min_rts <= query_rt
+    max_rt_check = query_rt <= max_rts
+    min_mz_check = min_mzs <= query_mz
+    max_mz_check = query_mz <= max_mzs
+    idx = np.nonzero(min_rt_check & max_rt_check & min_mz_check & max_mz_check)[0]
+    matches = chem_list[idx]
+
+    # pick a match
+    if len(matches) == 0:
+        return None
+    elif len(matches) == 1:
+        return matches[0]
+    else:  # multiple matches, take the closest in rt
+        diffs = [np.abs(chem.rt - to_find.rt) for chem in matches]
+        idx = np.argmin(diffs)
+        return matches[idx]
+
+
+def mzmine_match(chemical_list_1, chemical_list_2, mz_tol, rt_tol, verbose=False):
+    matches = {}
+    missing = []
+    chem_list = np.array(chemical_list_2)
+    min_rts = np.array([chem.rt - rt_tol for chem in chem_list])
+    max_rts = np.array([chem.rt + rt_tol for chem in chem_list])
+    min_mzs = np.array([chem.isotopes[0][0] * (1 - mz_tol / 1e6) for chem in chem_list])
+    max_mzs = np.array([chem.isotopes[0][0] * (1 + mz_tol / 1e6) for chem in chem_list])
+    for i in range(len(chemical_list_1)):
+        to_find = chemical_list_1[i]
+        if i % 1000 == 0 and verbose:
+            print('%d/%d found %d' % (i, len(chemical_list_1), len(matches)))
+        match = mzmine_find_chem(to_find, min_rts, max_rts, min_mzs, max_mzs, chem_list)
+        if match:
+            matches[to_find] = match
+    return matches
