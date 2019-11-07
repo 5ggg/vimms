@@ -123,8 +123,8 @@ class Environment(LoggerMixin):
         Sets initial environment, mass spec start time, default scan parameters and other values
         :return: None
         """
-        self.controller.environment = self
-        self.mass_spec.environment = self
+        self.controller.set_environment(self)
+        self.mass_spec.set_environment(self)
         self.mass_spec.time = self.min_time
         self._set_default_scan_params()
 

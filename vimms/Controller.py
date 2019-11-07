@@ -30,6 +30,9 @@ class Controller(LoggerMixin):
         self.last_ms1_scan = None
         self.environment = None
 
+    def set_environment(self, env):
+        self.environment = env
+
     def handle_acquisition_open(self):
         raise NotImplementedError()
 

@@ -228,6 +228,9 @@ class IndependentMassSpectrometer(LoggerMixin):
     # Public methods
     ####################################################################################################################
 
+    def set_environment(self, env):
+        self.environment = env
+
     def step(self):
         """
         Performs one step of a mass spectrometry process
@@ -575,50 +578,3 @@ class IndependentMassSpectrometer(LoggerMixin):
             if window[0] < self._get_mz(chemical, query_rt, which_isotope, which_adduct) <= window[1]:
                 return True
         return False
-
-
-class AsyncMassSpectrometer(IndependentMassSpectrometer):
-
-    def __init__(self, ionisation_mode, chemicals, peak_sampler, spectra_send_channel, task_receive_channel,
-                 add_noise=False, dynamic_exclusion=True):
-        super().__init__(ionisation_mode, chemicals, peak_sampler, add_noise, dynamic_exclusion)
-        self.spectra_send_channel = spectra_send_channel
-        self.task_receive_channel = task_receive_channel
-
-    def _get_param(self):
-        # get current task
-        # check if there's a new task from the controller, if yes then add to task queue
-        try:
-            received = self.task_receive_channel.receive_nowait()
-            received_tasks = received['tasks']
-            received_scan = received['scan']
-            print('mass_spec received %d new tasks for %s' % (len(received_tasks), received_scan))
-            self.processing_queue.extend(received_tasks)
-        except trio.WouldBlock:  # no new task
-            pass
-
-        # if the processing queue is empty, then just do the repeating scan
-        if len(self.processing_queue) == 0:
-            param = self.repeating_scan_parameters
-        else:
-            # otherwise pop the parameter for the next scan from the queue
-            param = self.processing_queue.pop(0)
-        return param
-
-    async def fire_event(self, event_name, arg=None):
-        if event_name not in self.event_dict:
-            raise ValueError('Unknown event name')
-
-        if event_name == self.MS_SCAN_ARRIVED:  # add new scan to spectra send channel
-            assert arg is not None
-            scan = arg
-            await self.spectra_send_channel.send(scan)
-            print('mass_spec sent', scan)
-        else:
-            # pretend to fire the event
-            # actually here we just runs the event handler method directly
-            e = self.event_dict[event_name]
-            if arg is not None:
-                e(arg)
-            else:
-                e()
