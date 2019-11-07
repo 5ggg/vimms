@@ -97,8 +97,6 @@ class SimpleMs1Controller(Controller):
 
     def _process_scan(self, scan):
         new_tasks = []
-        if scan.num_peaks > 0:
-            self.logger.info('Time %f Received %s' % (scan.rt, scan))
         return new_tasks
 
     def update_state_after_scan(self, last_scan):

@@ -1,8 +1,10 @@
 import math
-from collections import defaultdict
+import sys
+import time
 
+import clr
 import numpy as np
-import trio
+from clr import ListAssemblies
 from events import Events
 
 from vimms.Common import LoggerMixin, adduct_transformation
@@ -319,7 +321,7 @@ class IndependentMassSpectrometer(LoggerMixin):
             raise ValueError('Unknown event name')
 
         e = self.event_dict[event_name]
-        if event_name == self.MS_SCAN_ARRIVED: # if it's a scan event, then pass the scan to the controller
+        if event_name == self.MS_SCAN_ARRIVED:  # if it's a scan event, then pass the scan to the controller
             scan = arg
             self.environment.add_scan(scan)
         else:
@@ -578,3 +580,86 @@ class IndependentMassSpectrometer(LoggerMixin):
             if window[0] < self._get_mz(chemical, query_rt, which_isotope, which_adduct) <= window[1]:
                 return True
         return False
+
+
+class IAPIMassSpectrometer(IndependentMassSpectrometer):
+
+    def __init__(self, ionisation_mode, ref_dir, filename=None):
+        super().__init__(ionisation_mode, [], None, add_noise=False)
+
+        # add IAPI .dll location to Python path.
+        if ref_dir not in sys.path:
+            sys.path.append(ref_dir)
+
+        # make sure IAPI assemblies can be found
+        assert clr.FindAssembly('IAPI_Assembly') is not None
+        ref = clr.AddReference('IAPI_Assembly')
+        self.logger.debug('AddReference: %s' % ref)
+
+        short = list(ListAssemblies(False))
+        self.logger.debug('ListAssemblies: %s', short)
+        assert 'Fusion.API-1.0' in short
+        assert 'API-2.0' in short
+        assert 'Spectrum-1.0' in short
+        self.filename = filename
+
+    def run(self):
+        self.start_time = time.time()
+
+        # if filename is provided, then we create a Fusion Container that loads test mzML data
+        if self.filename is not None:
+            # initialise fake FusionContainer that reads data from mzML file
+            from IAPI_Assembly import FusionContainer
+            fusionContainer = FusionContainer(self.filename)
+
+            # start fusion container
+            fusionContainer.StartOnlineAccess()
+            while not fusionContainer.ServiceConnected:
+                time.sleep(0.1)
+            self.logger.info('FusionContainer is connected!!')
+
+            # get fusion scan container (assume it's the first)
+            fusionAccess = fusionContainer.Get(1)
+            self.fusionScanContainer = fusionAccess.GetMsScanContainer(0)
+
+            # register scan event handler
+            self.fusionScanContainer.MsScanArrived += self.step
+
+    def step(self, sender, args):
+        # convert IAPI scan object to Vimms scan object
+        iapi_scan = args.GetScan()
+
+        scan_id = self.idx
+        self.time = time.time()
+        scan_time = self.time - self.start_time  # TODO: not correct? This should be the scan start time from the mass spec
+        scan_mzs = np.array([c.Mz for c in iapi_scan.Centroids])
+        scan_intensities = np.array([c.Intensity for c in iapi_scan.Centroids])
+        ms_level = 1  # TODO: don't know how to extract ms_level from an IAPI scan
+
+        vimms_scan = Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time, scan_duration=None,
+                          isolation_windows=None, param=None)
+        # title = 'idx %d iapi_scan %s %d peaks --> %s' % (
+        #     self.idx, iapi_scan.Header['Scan'], iapi_scan.CentroidCount, vimms_scan)
+        # self.logger.debug(title)
+        self.fire_event(self.MS_SCAN_ARRIVED, vimms_scan)
+        self.idx += 1
+
+    def fire_event(self, event_name, arg=None):
+        if event_name not in self.event_dict:
+            raise ValueError('Unknown event name')
+
+        if event_name == self.MS_SCAN_ARRIVED:  # add new scan to spectra send channel
+            scan = arg
+            self.environment.add_scan(scan)
+        else:
+            # pretend to fire the event
+            # actually here we just runs the event handler method directly
+            e = self.event_dict[event_name]
+            if arg is not None:
+                e(arg)
+            else:
+                e()
+
+    def reset(self):
+        # TODO: need to implement later
+        pass

@@ -1,3 +1,5 @@
+import sys
+import time
 from pathlib import Path
 
 from tqdm import tqdm
@@ -156,3 +158,62 @@ class Environment(LoggerMixin):
             return self.controller.N, self.controller.rt_tol
         else:
             return None, None
+
+
+class IAPIEnvironment(Environment):
+
+    def __init__(self, mass_spec, controller, max_time, progress_bar=True):
+        super().__init__(mass_spec, controller, 0, max_time, progress_bar)
+        self.stop_time = None
+        self.last_time = None
+        self.pbar = tqdm(total=max_time, initial=0) if self.progress_bar else None
+
+    def run(self):
+        """
+        Runs the mass spec and controller
+        :return: None
+        """
+        # reset mass spec and set some initial values for each run
+        self.mass_spec.reset()
+        self.controller.reset()
+        self._set_initial_values()
+
+        # register event handlers from the controller
+        self.mass_spec.register(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.controller.handle_scan)
+        self.mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING,
+                                self.controller.handle_acquisition_open)
+        self.mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING,
+                                self.controller.handle_acquisition_closing)
+
+        self.last_time = time.time()
+        self.stop_time = self.last_time + self.max_time
+        self.mass_spec.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING)
+        self.mass_spec.run()
+
+    def add_scan(self, scan):
+        # stop event handling if stop_time has been reached
+        if time.time() > self.stop_time:
+            self.logger.debug('Unregistering MsScanArrived event handler')
+            self.mass_spec.fusionScanContainer.MsScanArrived -= self.mass_spec.step
+            self.mass_spec.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING)
+        else:
+            super().add_scan(scan)  # will call the controller to handle the scan here
+
+            # update controller internal states AFTER a scan has been generated and handled
+            self.controller.update_state_after_scan(scan)
+
+            # increment progress bar
+            self._update_progress_bar(self.pbar, scan)
+
+    def _update_progress_bar(self, pbar, scan):
+        if pbar is not None:
+            current_time = time.time()
+            elapsed = current_time - self.last_time
+            self.last_time = current_time
+            N, DEW = self._get_N_DEW(self.mass_spec.time)
+            if N is not None and DEW is not None:
+                msg = '(%.3fs) ms_level=%d N=%d DEW=%d' % (elapsed, scan.ms_level, N, DEW)
+            else:
+                msg = '(%.3fs) ms_level=%d' % (elapsed, scan.ms_level)
+            pbar.update(elapsed)
+            pbar.set_description(msg)
