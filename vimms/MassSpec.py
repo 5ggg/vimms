@@ -196,7 +196,7 @@ class IndependentMassSpectrometer(LoggerMixin):
 
         # current task queue
         self.processing_queue = []
-        self.repeating_scan_parameters = None
+        self.method_scan_parameters = None
         self.environment = None
 
         # the events here follows IAPI events
@@ -280,20 +280,13 @@ class IndependentMassSpectrometer(LoggerMixin):
         """
         self.processing_queue.append(param)
 
-    def disable_repeating_scan(self):
+    def set_method_scan(self, params):
         """
-        Disable repeating scan
-        :return: None
-        """
-        self.set_repeating_scan(None)
-
-    def set_repeating_scan(self, params):
-        """
-        Sets the parameters for the default repeating scans that will be done when the processing queue is empty.
+        Sets the parameters for the default method scans that will be done when the processing queue is empty.
         :param params:
         :return:
         """
-        self.repeating_scan_parameters = params
+        self.method_scan_parameters = params
 
     def reset(self):
         """
@@ -305,7 +298,7 @@ class IndependentMassSpectrometer(LoggerMixin):
         self.time = 0
         self.idx = 0
         self.processing_queue = []
-        self.repeating_scan_parameters = None
+        self.method_scan_parameters = None
         self.current_N = 0
         self.current_DEW = 0
         self.fragmentation_events = []
@@ -366,7 +359,7 @@ class IndependentMassSpectrometer(LoggerMixin):
         """
         # if the processing queue is empty, then just do the repeating scan
         if len(self.processing_queue) == 0:
-            param = self.repeating_scan_parameters
+            param = self.method_scan_parameters
         else:
             # otherwise pop the parameter for the next scan from the queue
             param = self.processing_queue.pop(0)

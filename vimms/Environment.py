@@ -128,7 +128,8 @@ class Environment(LoggerMixin):
         self.controller.set_environment(self)
         self.mass_spec.set_environment(self)
         self.mass_spec.time = self.min_time
-        self._set_default_scan_params()
+        method_scan = self.get_method_scan_params()
+        self.mass_spec.set_method_scan(method_scan)
 
         N, DEW = self._get_N_DEW(self.mass_spec.time)
         if N is not None:
@@ -136,15 +137,15 @@ class Environment(LoggerMixin):
         if DEW is not None:
             self.mass_spec.current_DEW = DEW
 
-    def _set_default_scan_params(self):
+    def get_method_scan_params(self):
         """
-        Sets default scan parmaeters
-        :return: None
+        Gets the default method scan parameters. Now it's set to do MS1 scan only.
+        :return: the method scan parameters
         """
-        default_scan = ScanParameters()
-        default_scan.set(ScanParameters.MS_LEVEL, 1)
-        default_scan.set(ScanParameters.ISOLATION_WINDOWS, [[DEFAULT_MS1_SCAN_WINDOW]])
-        self.mass_spec.set_repeating_scan(default_scan)
+        method_scan = ScanParameters()
+        method_scan.set(ScanParameters.MS_LEVEL, 1)
+        method_scan.set(ScanParameters.ISOLATION_WINDOWS, [[DEFAULT_MS1_SCAN_WINDOW]])
+        return method_scan
 
     def _get_N_DEW(self, time):
         """
