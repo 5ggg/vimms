@@ -129,3 +129,10 @@ Interface/IAPI_Assembly/obj/
 Interface/IAPI_Console/bin/
 Interface/IAPI_Console/obj/
 vimms/.idea/
+Interface/CreateCustomScans/obj/
+Interface/FusionExampleClient/bin/
+Interface/FusionExampleClient/obj/Debug/
+Interface/mzMLReader/bin/Debug/
+Interface/mzMLReader/obj/
+Interface/ScanDump/bin/Debug/
+Interface/ScanDump/obj/
