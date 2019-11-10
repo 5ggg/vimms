@@ -25,14 +25,17 @@ namespace ScanDump
 {
     internal class ScansOutput
     {
+        private List<string> Logs { get; set; }
+        private IFusionMsScanContainer ScanContainer { get; set; }
+
         static void Main(string[] args)
         {
-            // Use the Factory creation method to create a Fusion Access Container
-            IFusionInstrumentAccessContainer fusionContainer = Factory<IFusionInstrumentAccessContainer>.Create();
+            //// Use the Factory creation method to create a Fusion Access Container
+            //IFusionInstrumentAccessContainer fusionContainer = Factory<IFusionInstrumentAccessContainer>.Create();
 
             // Above won't work without a license! For testing, use the following FusionContainer that loads data from an mzML file.
-            // string filename = "C:\\Users\\joewa\\University of Glasgow\\Vinny Davies - CLDS Metabolomics Project\\Data\\multibeers_urine_data\\beers\\fragmentation\\mzML\\Beer_multibeers_1_T10_POS.mzML";
-            // IFusionInstrumentAccessContainer fusionContainer = new FusionContainer(filename);
+            string filename = "C:\\Users\\joewa\\University of Glasgow\\Vinny Davies - CLDS Metabolomics Project\\Data\\multibeers_urine_data\\beers\\fragmentation\\mzML\\Beer_multibeers_1_T10_POS.mzML";
+            IFusionInstrumentAccessContainer fusionContainer = new FusionContainer(filename);
 
             // Connect to the service by going 'online'
             fusionContainer.StartOnlineAccess();
@@ -59,9 +62,6 @@ namespace ScanDump
             Console.ReadLine();
         }
 
-        private List<string> Logs { get; set; }
-        private IFusionMsScanContainer ScanContainer { get; set; }
-
         private ScansOutput(IFusionInstrumentAccess instrument)
         {
             Logs = new List<string>();
@@ -72,10 +72,11 @@ namespace ScanDump
 
         private void WriteLog(string msg, bool print=false)
         {
-            Logs.Add(msg);
+            string msgWithTimestamp = string.Format("[{0:HH:mm:ss.ffff}] {1}", DateTime.Now, msg);
+            Logs.Add(msgWithTimestamp);
             if (print)
             {
-                Console.WriteLine(msg);
+                Console.WriteLine(msgWithTimestamp);
             }
         }
 
@@ -114,13 +115,12 @@ namespace ScanDump
             IMsScanV2 scan = e.GetScan();
             if (scan == null)
             {
-                string msg = string.Format("[{0:HH:mm:ss.ffff}] Empty scan", DateTime.Now);
+                string msg = "Empty scan";
                 WriteLog(msg, true);
             }
             else
             {
-                string msg = string.Format("[{0:HH:mm:ss.ffff}] Received MS Scan Number {1} -- {2} peaks",
-                    DateTime.Now,
+                string msg = string.Format("Received MS Scan Number {0} -- {1} peaks",
                     scan.Header["Scan"],
                     scan.CentroidCount);
                 WriteLog(msg, true);

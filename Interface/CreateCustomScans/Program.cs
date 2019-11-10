@@ -1,208 +1,268 @@
-﻿using System;
+﻿extern alias v1;
+extern alias v2;
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Globalization;
 
-using Thermo.Interfaces.InstrumentAccess_V1;
-using Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer;
-
-using IMsScan = Thermo.Interfaces.InstrumentAccess_V2.MsScanContainer.IMsScan;
-using ICentroid = Thermo.Interfaces.InstrumentAccess_V2.MsScanContainer.ICentroid;
+using v2::Thermo.Interfaces.InstrumentAccess_V1;
+using v2::Thermo.Interfaces.InstrumentAccess_V1.Control;
+using v2::Thermo.Interfaces.InstrumentAccess_V1.Control.Scans;
+using Thermo.Interfaces.FusionAccess_V1;
+using Thermo.TNG.Factory;
+using System.IO;
 
 namespace CreateCustomScans
 {
-    /// <summary>
-    /// This class presents the output of the scans being acquired by the instrument.
-    /// </summary>
-    internal class ScansOutput
+    internal class ScansTest : IDisposable
     {
-        /// <summary>
-        /// Crate a new <see cref="ScansOutput"/>
-        /// </summary>
-        /// <param name="instrument">the instrument instance</param>
-        internal ScansOutput(IInstrumentAccess instrument)
-        {
-            ScanContainer = instrument.GetMsScanContainer(0);
-            Console.WriteLine("Detector class: " + ScanContainer.DetectorClass);
+        private IScans m_scans;
+        private bool m_startCustomScan = true;
+        private object m_lock = new object();
+        private int m_disposed;
+        private long m_runningNumber = 12345;    // start with an offset to make sure it's "us"
+        private int m_polarity = 0;
+        private List<string> Logs { get; set; }
 
-            ScanContainer.AcquisitionStreamOpening += new EventHandler<MsAcquisitionOpeningEventArgs>(ScanContainer_AcquisitionStarted);
-            ScanContainer.AcquisitionStreamClosing += new EventHandler(ScanContainer_AcquisitionEnded);
-            ScanContainer.MsScanArrived += new EventHandler<MsScanEventArgs>(ScanContainer_ScanArrived);
+        static void Main(string[] args)
+        {
+            // Use the Factory creation method to create a Fusion Access Container
+            IFusionInstrumentAccessContainer fusionContainer = Factory<IFusionInstrumentAccessContainer>.Create();
+
+            // Above won't work without a license! For testing, use the following FusionContainer that loads data from an mzML file.
+            // string filename = "C:\\Users\\joewa\\University of Glasgow\\Vinny Davies - CLDS Metabolomics Project\\Data\\multibeers_urine_data\\beers\\fragmentation\\mzML\\Beer_multibeers_1_T10_POS.mzML";
+            // IFusionInstrumentAccessContainer fusionContainer = new FusionContainer(filename);
+
+            // Connect to the service by going 'online'
+            fusionContainer.StartOnlineAccess();
+
+            // Wait until the service is connected 
+            // (better through the event, but this is nice and simple)
+            while (!fusionContainer.ServiceConnected)
+            {
+                ;
+            }
+
+            // From the instrument container, get access to a particular instrument
+            IFusionInstrumentAccess fusionAccess = fusionContainer.Get(1);
+
+            // Dump scan output
+            ScansTest scansTest = new ScansTest(fusionAccess);
+
+            // https://stackoverflow.com/questions/2555292/how-to-run-code-before-program-exit
+            // https://stackoverflow.com/questions/33060838/c-sharp-processexit-event-handler-not-triggering-code
+            AppDomain.CurrentDomain.ProcessExit += (sender, EventArgs) =>
+            {
+                scansTest.CloseDown();
+            };
+            Console.ReadLine();
         }
 
-        /// <summary>
-        /// Show the last acquired scan if that exists and cleanup.
-        /// </summary>
-        internal void CloseDown()
+        internal ScansTest(IFusionInstrumentAccess instrument)
         {
-            // Be tolerant to thread-switches
-            IMsScanContainer scanContainer = ScanContainer;
-            ScanContainer = null;
+            m_scans = instrument.Control.GetScans(false);
+            m_scans.CanAcceptNextCustomScan += new EventHandler(Scans_CanAcceptNextCustomScan);
+            m_scans.PossibleParametersChanged += new EventHandler(Scans_PossibleParametersChanged);
 
-            if (scanContainer != null)
+            DumpPossibleParameters();
+            bool startNewScan = false;
+            lock (m_lock)
             {
-                scanContainer.MsScanArrived -= new EventHandler<MsScanEventArgs>(ScanContainer_ScanArrived);
-                scanContainer.AcquisitionStreamClosing -= new EventHandler(ScanContainer_AcquisitionEnded);
-                scanContainer.AcquisitionStreamOpening -= new EventHandler<MsAcquisitionOpeningEventArgs>(ScanContainer_AcquisitionStarted);
-                using (IMsScan scan = (/* V2 */ IMsScan)scanContainer.GetLastMsScan())
+                if (m_scans.PossibleParameters.Length > 0)
                 {
-                    DumpScan("GetLastScan()", scan);
+                    startNewScan = m_startCustomScan;
+                    m_startCustomScan = false;
                 }
             }
-        }
 
-        /// <summary>
-        /// Access to the scan container hosted by this instance.
-        /// </summary>
-        private IMsScanContainer ScanContainer { get; set; }
-
-        /// <summary>
-        /// When a new acquisition starts we dump that information.
-        /// </summary>
-        /// <param name="sender">doesn't matter</param>
-        /// <param name="e">doesn't matter</param>
-        private void ScanContainer_AcquisitionStarted(object sender, EventArgs e)
-        {
-            Console.WriteLine("START OF ACQUISITION");
-        }
-
-        /// <summary>
-        /// When an acquisitions ends we dump that information.
-        /// </summary>
-        /// <param name="sender">doesn't matter</param>
-        /// <param name="e">doesn't matter</param>
-        private void ScanContainer_AcquisitionEnded(object sender, EventArgs e)
-        {
-            Console.WriteLine("END OF ACQUISITION");
-        }
-
-        /// <summary>
-        /// When a new scan arrives we dump that information in verbose mode.
-        /// </summary>
-        /// <param name="sender">doesn't matter</param>
-        /// <param name="e">used to access the scan information</param>
-        private void ScanContainer_ScanArrived(object sender, MsScanEventArgs e)
-        {
-            Console.WriteLine("Scan arrived");
-            // As an example we access all centroids
-            using (IMsScan scan = (/* V2 */ IMsScan)e.GetScan())
+            if (startNewScan)
             {
-                DumpScan("Scan arrived", scan);
+                StartNewScan();
             }
         }
 
-        /// <summary>
-        /// Dump a scan and prepend it with an intro string.
-        /// </summary>
-        /// <param name="intro">string to prepend</param>
-        /// <param name="scan">thing to dump</param>
-        private void DumpScan(string intro, IMsScan scan)
+        private void WriteLog(string msg, bool print = false)
         {
-            StringBuilder sb = new StringBuilder();
-            sb.AppendFormat(DateTime.Now.ToString());
-            sb.Append(": ");
-            sb.Append(intro);
-            sb.Append(", ");
-            if (scan == null)
+            string msgWithTimestamp = string.Format("[{0:HH:mm:ss.ffff}] {1}", DateTime.Now, msg);
+            Logs.Add(msgWithTimestamp);
+            if (print)
             {
-                sb.Append("(empty scan)");
-                Console.WriteLine(sb.ToString());
+                Console.WriteLine(msgWithTimestamp);
+            }
+        }
+
+        private void CloseDown()
+        {
+            WriteLog("Goodbye Cruel World", true);
+
+            // write log files to Desktop
+            string docPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            string fileName = "CreateCustomScans_" + DateTime.Now.ToFileTime() + ".txt";
+            using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, fileName)))
+            {
+                foreach (string line in Logs)
+                    outputFile.WriteLine(line);
+            }
+        }
+
+        ~ScansTest()
+        {
+            // Let the GC dispose managed members itself.
+            Dispose(false);
+        }
+
+        /// <summary>
+        /// Clean up any resources being used.
+        /// </summary>
+        /// <param name="disposeEvenManagedStuff">true to dispose managed and unmanaged resources; false to dispose unmanaged resources</param>
+        protected void Dispose(bool disposeEvenManagedStuff)
+        {
+            // prevent double disposing
+            if (Interlocked.Exchange(ref m_disposed, 1) != 0)
+            {
                 return;
             }
-            else
+
+            if (disposeEvenManagedStuff)
             {
-                sb.Append("detector=");
-                sb.Append(scan.DetectorName);
-                string id;
-                if (scan.SpecificInformation.TryGetValue("Access Id:", out id))
+                if (m_scans != null)
                 {
-                    sb.Append(", id=");
-                    sb.Append(id);
-                }
-                Console.WriteLine(sb.ToString());
-            }
-
-            // This is rather noisy, dump all variables:
-            DumpVars(scan);
-
-            Console.Write("  Noise: ");
-            foreach (INoiseNode noise in scan.NoiseBand)
-            {
-                Console.Write("[{0}, {1}], ", noise.Mz, noise.Intensity);
-            }
-            Console.WriteLine();
-
-            // Not so useful:
-            Console.WriteLine("{0} centroids, {1} profile peaks", scan.CentroidCount ?? 0, scan.ProfileCount ?? 0);
-
-            // Iterate over all centroids and access dump all profile elements for each.
-            foreach (ICentroid centroid in scan.Centroids)
-            {
-                Console.WriteLine(" {0,10:F5}, I={1:E5}, C={2}, E={3,-5} F={4,-5} M={5,-5} R={6,-5} Res={7}",
-                                    centroid.Mz, centroid.Intensity, centroid.Charge ?? -1, centroid.IsExceptional, centroid.IsFragmented, centroid.IsMerged, centroid.IsReferenced, centroid.Resolution);
-                if (scan.HasProfileInformation)
-                {
-                    Console.Write("    Profile:");
-                    try
-                    {
-                        foreach (IMassIntensity profilePeak in centroid.Profile)
-                        {
-                            Console.Write(" [{0,10:F5},{1:E5}] ", profilePeak.Mz, profilePeak.Intensity);
-                        }
-                    }
-                    catch
-                    {
-                    }
-                    Console.WriteLine();
+                    m_scans.CanAcceptNextCustomScan -= new EventHandler(Scans_CanAcceptNextCustomScan);
+                    m_scans.PossibleParametersChanged -= new EventHandler(Scans_PossibleParametersChanged);
+                    m_scans.Dispose();
+                    m_scans = null;
                 }
             }
         }
 
         /// <summary>
-        /// Dump all variables belonging to a scan
+        /// Clean up any resources being used.
         /// </summary>
-        /// <param name="scan">the scan for which to dump all variables</param>
-        private void DumpVars(IMsScan scan)
+        virtual public void Dispose()
         {
-            Console.WriteLine("  COMMON");
-            DumpScanVars(scan.CommonInformation);
-            Console.WriteLine("  SPECIFIC");
-            DumpScanVars(scan.SpecificInformation);
+            // Dispose managed and unmanaged resources and tell GC we don't need the destructor getting called.
+            Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         /// <summary>
-        /// Dump all scan variables belonging to a specific container in a scan.
+        /// Get access to the flag whether this object is disposed.
         /// </summary>
-        /// <param name="container">container to dump all contained variables for</param>
-        private void DumpScanVars(IInfoContainer container)
+        internal bool Disposed { get { return m_disposed != 0; } }
+
+        /// <summary>
+        /// Dump the list of possible commands.
+        /// </summary>
+        private bool DumpPossibleParameters()
         {
-            foreach (string s in container.Names)
+            WriteLog("DumpPossibleParameters", true);
+            IParameterDescription[] parameters = m_scans.PossibleParameters;
+            if (parameters.Length == 0)
             {
-                DumpVar(container, s);
+                WriteLog("No possible IScans parameters known.");
+                return false;
+            }
+
+            WriteLog("IScans parameters:");
+            foreach (IParameterDescription parameter in parameters)
+            {
+                StringBuilder sb = new StringBuilder();
+                sb.AppendFormat("   '{0}' ", parameter.Name);
+                if (parameter.Selection == "")
+                {
+                    sb.AppendFormat("doesn't accept an argument, help: {0}", parameter.Help);
+                }
+                else
+                {
+                    sb.AppendFormat("accepts '{0}', default='{1}', help: {2}", parameter.Selection, parameter.DefaultValue, parameter.Help);
+                }
+                WriteLog(sb.ToString());
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Start a new custom scan.
+        /// </summary>
+        private void StartNewScan()
+        {
+            ICustomScan cs = m_scans.CreateCustomScan();
+            cs.RunningNumber = m_runningNumber++;
+
+            // Allow an extra delay of 500 ms, we will answer as fast as possible, so this is a maximum value.
+            cs.SingleProcessingDelay = 0.50D;
+
+            // Toggle the polarity:
+            m_polarity = (m_polarity == 0) ? 1 : 0;
+            cs.Values["Polarity"] = m_polarity.ToString(NumberFormatInfo.InvariantInfo);
+
+            // Dump key-value pairs in cs.Values
+            foreach (KeyValuePair<string, string> kvp in cs.Values)
+            {
+                string msg = string.Format("cs.Values Key = {0}, Value = {1}", kvp.Key, kvp.Value);
+                WriteLog(msg);
+            }
+
+            try
+            {
+                if (!m_scans.SetCustomScan(cs))
+                {
+                    WriteLog("New custom scan has not been placed, connection to service broken!!", true);
+                }
+                WriteLog("Placed a new custom scan(" + cs.RunningNumber + ")", true);
+            }
+            catch (Exception e)
+            {
+                WriteLog("Error placing a new scan: " + e.Message, true);
             }
         }
 
         /// <summary>
-        /// Dump the content of a single variable to the console after testing the consistency.
+        /// Called when the current custom scan has been processed and the next custom scan can be accepted.
+        /// We start a new scan.
         /// </summary>
-        /// <param name="container">container that variable belongs to</param>
-        /// <param name="name">name of the variable</param>
-        /// <param name="sb">buffer to be reused for speed</param>
-        private void DumpVar(IInfoContainer container, string name)
+        /// <param name="sender">doesn't matter</param>
+        /// <param name="e">doesn't matter</param>
+        private void Scans_CanAcceptNextCustomScan(object sender, EventArgs e)
         {
-            object o = null;
-            string s = null;
-            MsScanInformationSource i = MsScanInformationSource.Unknown;
-
-            if (container.TryGetValue(name, out s, ref i))
+            WriteLog("CanAcceptNextCustomScan", true);
+            if ((m_scans != null) && (m_scans.PossibleParameters.Length > 0))
             {
-                // i should have a reasonable value now
-                if (container.TryGetRawValue(name, out o, ref i))
+                // Assume we are able to place a new scan.
+                StartNewScan();
+            }
+        }
+
+        /// <summary>
+        /// Called when the list of possible commands have changed we dump them.
+        /// Additionally we start a new scan.
+        /// </summary>
+        /// <param name="sender">doesn't matter</param>
+        /// <param name="e">doesn't matter</param>
+        private void Scans_PossibleParametersChanged(object sender, EventArgs e)
+        {
+            if (!DumpPossibleParameters())
+            {
+                return;
+            }
+
+            bool startNewScan = false;
+            lock (m_lock)
+            {
+                if (m_scans.PossibleParameters.Length > 0)
                 {
-                    Console.WriteLine("  {0}: type={1}, text='{2}', raw='{3}'",
-                        name, i, s, o);
+                    startNewScan = m_startCustomScan;
+                    m_startCustomScan = false;
                 }
             }
+
+            if (startNewScan)
+            {
+                StartNewScan();
+            }
         }
-    }   
+    }
 }
