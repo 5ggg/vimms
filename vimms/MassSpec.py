@@ -605,18 +605,26 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             from IAPI_Assembly import FusionContainer
             fusionContainer = FusionContainer(self.filename)
 
-            # start fusion container
-            fusionContainer.StartOnlineAccess()
-            while not fusionContainer.ServiceConnected:
-                time.sleep(0.1)
-            self.logger.info('FusionContainer is connected!!')
+        else: # TODO: untested codes to connect to the Fusion
+            clr.AddReference('Thermo.TNG.Factory')
+            from Thermo.Interfaces.FusionAccess_V1 import IFusionInstrumentAccessContainer
+            from Thermo.TNG.Factory import Factory
+            cs = Factory[IFusionInstrumentAccessContainer]
+            fusionContainer = cs.Create([IFusionInstrumentAccessContainer])
 
-            # get fusion scan container (assume it's the first)
-            fusionAccess = fusionContainer.Get(1)
-            self.fusionScanContainer = fusionAccess.GetMsScanContainer(0)
+        # start fusion container
+        self.logger.info('FusionContainer going online')
+        fusionContainer.StartOnlineAccess()
+        while not fusionContainer.ServiceConnected:
+            time.sleep(0.1)
+        self.logger.info('FusionContainer is connected!!')
 
-            # register scan event handler
-            self.fusionScanContainer.MsScanArrived += self.step
+        # get fusion scan container (assume it's the first)
+        fusionAccess = fusionContainer.Get(1)
+        self.fusionScanContainer = fusionAccess.GetMsScanContainer(0)
+
+        # register scan event handler
+        self.fusionScanContainer.MsScanArrived += self.step
 
     def step(self, sender, args):
         # convert IAPI scan object to Vimms scan object
