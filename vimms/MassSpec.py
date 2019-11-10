@@ -179,6 +179,8 @@ class IndependentMassSpectrometer(LoggerMixin):
     MS_SCAN_ARRIVED = 'MsScanArrived'
     ACQUISITION_STREAM_OPENING = 'AcquisitionStreamOpening'
     ACQUISITION_STREAM_CLOSING = 'AcquisitionStreamClosing'
+    CAN_ACCEPT_NEXT_CUSTOM_SCAN = 'CanAcceptNextCustomScan'
+    POSSIBLE_PARAMETERS_CHANGED = 'PossibleParametersChanged'
 
     def __init__(self, ionisation_mode, chemicals, peak_sampler, add_noise=False):
         """
@@ -196,7 +198,6 @@ class IndependentMassSpectrometer(LoggerMixin):
 
         # current task queue
         self.processing_queue = []
-        self.method_scan_parameters = None
         self.environment = None
 
         # the events here follows IAPI events
@@ -280,14 +281,6 @@ class IndependentMassSpectrometer(LoggerMixin):
         """
         self.processing_queue.append(param)
 
-    def set_method_scan(self, params):
-        """
-        Sets the parameters for the default method scans that will be done when the processing queue is empty.
-        :param params:
-        :return:
-        """
-        self.method_scan_parameters = params
-
     def reset(self):
         """
         Resets the mass spec state so we can reuse it again
@@ -298,7 +291,6 @@ class IndependentMassSpectrometer(LoggerMixin):
         self.time = 0
         self.idx = 0
         self.processing_queue = []
-        self.method_scan_parameters = None
         self.current_N = 0
         self.current_DEW = 0
         self.fragmentation_events = []
@@ -359,7 +351,7 @@ class IndependentMassSpectrometer(LoggerMixin):
         """
         # if the processing queue is empty, then just do the repeating scan
         if len(self.processing_queue) == 0:
-            param = self.method_scan_parameters
+            param = self.environment.get_default_scan_params()
         else:
             # otherwise pop the parameter for the next scan from the queue
             param = self.processing_queue.pop(0)
@@ -596,6 +588,9 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         assert 'Spectrum-1.0' in short
         self.filename = filename
 
+        self.fusionScanContainer = None
+        self.fusionScanControl = None
+
     def run(self):
         self.start_time = time.time()
 
@@ -626,6 +621,18 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         # register scan event handler
         self.fusionScanContainer.MsScanArrived += self.step
 
+        # get scan control interface
+        self.logger.info('Getting scan control interface')
+        try:
+            self.fusionScanControl = fusionAccess.Control.GetScans(False)
+            if self.fusionScanControl is not None:
+                self.logger.info('Obtained scan control interface')
+                self.fusionScanControl.CanAcceptNextCustomScan += self.handleCanAcceptNextCustomScan
+                self.fusionScanControl.PossibleParametersChanged += self.handlePossibleParametersChanged
+                self._try_send_custom_scan()
+        except Exception as e:
+            self.logger.info('Unable to obtain scan control interface: %s' % e)
+
     def step(self, sender, args):
         # convert IAPI scan object to Vimms scan object
         iapi_scan = args.GetScan()
@@ -645,6 +652,14 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         self.fire_event(self.MS_SCAN_ARRIVED, vimms_scan)
         self.idx += 1
 
+    def handleCanAcceptNextCustomScan(self, sender, args):
+        self.logger.debug('handleCanAcceptNextCustomScan called')
+        self.fire_event(self.CAN_ACCEPT_NEXT_CUSTOM_SCAN, args)
+
+    def handlePossibleParametersChanged(self, sender, args):
+        self.logger.debug('handlePossibleParametersChanged called')
+        self.fire_event(self.POSSIBLE_PARAMETERS_CHANGED, args)
+
     def fire_event(self, event_name, arg=None):
         if event_name not in self.event_dict:
             raise ValueError('Unknown event name')
@@ -652,6 +667,8 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         if event_name == self.MS_SCAN_ARRIVED:  # add new scan to spectra send channel
             scan = arg
             self.environment.add_scan(scan)
+        elif event_name == self.CAN_ACCEPT_NEXT_CUSTOM_SCAN or event_name == self.POSSIBLE_PARAMETERS_CHANGED:
+            self._try_send_custom_scan()
         else:
             # pretend to fire the event
             # actually here we just runs the event handler method directly
@@ -660,6 +677,16 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
                 e(arg)
             else:
                 e()
+
+    def _try_send_custom_scan(self):
+        if self.fusionScanControl is not None and len(self.fusionScanControl.PossibleParameters) > 0:
+            # get one scan param from the mass spec processing queue and send it over
+            param = self._get_param()
+            if param is not None:
+                self.logger.debug('Trying to send a custom scan: %s' % param)
+                raise NotImplementedError()
+            else:
+                self.logger.debug('Got a None custom scan')
 
     def reset(self):
         # TODO: need to implement later

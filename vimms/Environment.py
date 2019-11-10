@@ -29,6 +29,9 @@ class Environment(LoggerMixin):
         self.min_time = min_time
         self.max_time = max_time
         self.progress_bar = progress_bar
+        self.default_scan_params = ScanParameters()
+        self.default_scan_params.set(ScanParameters.MS_LEVEL, 1)
+        self.default_scan_params.set(ScanParameters.ISOLATION_WINDOWS, [[DEFAULT_MS1_SCAN_WINDOW]])
 
     def run(self):
         """
@@ -102,7 +105,7 @@ class Environment(LoggerMixin):
         self.task_channel.extend(scan_params)
         while len(self.task_channel) > 0:
             new_task = self.task_channel.pop(0)
-            self.mass_spec.processing_queue.append(new_task)
+            self.mass_spec.add_to_processing_queue(new_task)
 
     def write_mzML(self, out_dir, out_file):
         """
@@ -128,8 +131,6 @@ class Environment(LoggerMixin):
         self.controller.set_environment(self)
         self.mass_spec.set_environment(self)
         self.mass_spec.time = self.min_time
-        method_scan = self.get_method_scan_params()
-        self.mass_spec.set_method_scan(method_scan)
 
         N, DEW = self._get_N_DEW(self.mass_spec.time)
         if N is not None:
@@ -137,15 +138,12 @@ class Environment(LoggerMixin):
         if DEW is not None:
             self.mass_spec.current_DEW = DEW
 
-    def get_method_scan_params(self):
+    def get_default_scan_params(self):
         """
         Gets the default method scan parameters. Now it's set to do MS1 scan only.
-        :return: the method scan parameters
+        :return: the default scan parameters
         """
-        method_scan = ScanParameters()
-        method_scan.set(ScanParameters.MS_LEVEL, 1)
-        method_scan.set(ScanParameters.ISOLATION_WINDOWS, [[DEFAULT_MS1_SCAN_WINDOW]])
-        return method_scan
+        return self.default_scan_params
 
     def _get_N_DEW(self, time):
         """
@@ -198,7 +196,11 @@ class IAPIEnvironment(Environment):
             self.mass_spec.fusionScanContainer.MsScanArrived -= self.mass_spec.step
             self.mass_spec.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING)
         else:
-            super().add_scan(scan)  # will call the controller to handle the scan here
+            # handle the scan immediately by passing it to the controller
+            self.scan_channel.append(scan)
+            scan = self.scan_channel.pop(0)
+            tasks = self.controller.handle_scan(scan)
+            self.add_tasks(tasks) # push new tasks to mass spec queue
 
             # update controller internal states AFTER a scan has been generated and handled
             self.controller.update_state_after_scan(scan)
