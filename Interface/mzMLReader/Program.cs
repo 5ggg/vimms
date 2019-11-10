@@ -47,14 +47,21 @@ namespace mzMLReader
         private static void FusionScanContainer_MsScanArrived(object sender, MsScanEventArgs e)
         {
             IMsScan scan = e.GetScan();
-            Console.WriteLine("[{0:HH:mm:ss.ffff}] Received MS Scan Number {1} -- {2} peaks",
+            if (scan == null)
+            {
+                Console.WriteLine("[{0:HH:mm:ss.ffff}] Empty scan", DateTime.Now);
+            }
+            else
+            {
+                Console.WriteLine("[{0:HH:mm:ss.ffff}] Received MS Scan Number {1} -- {2} peaks",
                 DateTime.Now,
                 scan.Header["Scan"],
                 scan.CentroidCount);
+            }
 
             //foreach (ICentroid centroid in scan.Centroids)
             //{
-            //    Console.WriteLine("{0} {1}", centroid.Mz, centroid.Intensity);
+            //    Console.WriteLine("- mz {0} intensity {1}", centroid.Mz, centroid.Intensity);
             //}
         }
 

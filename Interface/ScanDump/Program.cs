@@ -1,29 +1,38 @@
 ﻿extern alias v1;
 extern alias v2;
+
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Text;
+
+using IAPI_Assembly;
+
 using Thermo.Interfaces.FusionAccess_V1;
 using Thermo.Interfaces.FusionAccess_V1.MsScanContainer;
 using Thermo.Interfaces.SpectrumFormat_V1;
 using Thermo.TNG.Factory;
 using v2::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer;
+
 using IInfoContainerV1 = v1::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.IInfoContainer;
 using IMsScanV1 = v1::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.IMsScan;
+using IMsScanV2 = v2::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.IMsScan;
 using MsScanInformationSourceV1 = v1::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.MsScanInformationSource;
 
 // using ICentroid = v2::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.ICentroid;
 
 namespace ScanDump
 {
-    /// <summary>
-    /// This class presents the output of the scans being acquired by the instrument.
-    /// </summary>
     internal class ScansOutput
     {
         static void Main(string[] args)
         {
             // Use the Factory creation method to create a Fusion Access Container
             IFusionInstrumentAccessContainer fusionContainer = Factory<IFusionInstrumentAccessContainer>.Create();
+
+            // Above won't work without a license! For testing, use the following FusionContainer that loads data from an mzML file.
+            // string filename = "C:\\Users\\joewa\\University of Glasgow\\Vinny Davies - CLDS Metabolomics Project\\Data\\multibeers_urine_data\\beers\\fragmentation\\mzML\\Beer_multibeers_1_T10_POS.mzML";
+            // IFusionInstrumentAccessContainer fusionContainer = new FusionContainer(filename);
 
             // Connect to the service by going 'online'
             fusionContainer.StartOnlineAccess();
@@ -41,27 +50,39 @@ namespace ScanDump
             // Dump scan output
             ScansOutput scansOutput = new ScansOutput(fusionAccess);
 
+            // https://stackoverflow.com/questions/2555292/how-to-run-code-before-program-exit
+            // https://stackoverflow.com/questions/33060838/c-sharp-processexit-event-handler-not-triggering-code
+            AppDomain.CurrentDomain.ProcessExit += (sender, EventArgs) =>
+            {
+                scansOutput.CloseDown();
+            };
+            Console.ReadLine();
         }
 
-        /// <summary>
-        /// Crate a new <see cref="ScansOutput"/>
-        /// </summary>
-        /// <param name="instrument">the instrument instance</param>
+        private List<string> Logs { get; set; }
+        private IFusionMsScanContainer ScanContainer { get; set; }
+
         private ScansOutput(IFusionInstrumentAccess instrument)
         {
+            Logs = new List<string>();
             ScanContainer = instrument.GetMsScanContainer(0);
-            Console.WriteLine("Detector class: " + ScanContainer.DetectorClass);
-
-            //ScanContainer.AcquisitionStreamOpening += new EventHandler<MsAcquisitionOpeningEventArgs>(ScanContainer_AcquisitionStarted);
-            //ScanContainer.AcquisitionStreamClosing += new EventHandler(ScanContainer_AcquisitionEnded);
+            WriteLog("Detector class: " + ScanContainer.DetectorClass);
             ScanContainer.MsScanArrived += new EventHandler<MsScanEventArgs>(ScanContainer_ScanArrived);
         }
 
-        /// <summary>
-        /// Show the last acquired scan if that exists and cleanup.
-        /// </summary>
+        private void WriteLog(string msg, bool print=false)
+        {
+            Logs.Add(msg);
+            if (print)
+            {
+                Console.WriteLine(msg);
+            }
+        }
+
         private void CloseDown()
         {
+            WriteLog("Goodbye Cruel World", true);
+
             // Be tolerant to thread-switches
             IFusionMsScanContainer scanContainer = ScanContainer;
             ScanContainer = null;
@@ -69,39 +90,18 @@ namespace ScanDump
             if (scanContainer != null)
             {
                 scanContainer.MsScanArrived -= new EventHandler<MsScanEventArgs>(ScanContainer_ScanArrived);
-                //scanContainer.AcquisitionStreamClosing -= new EventHandler(ScanContainer_AcquisitionEnded);
-                //scanContainer.AcquisitionStreamOpening -= new EventHandler<MsAcquisitionOpeningEventArgs>(ScanContainer_AcquisitionStarted);
-                using (IMsScanV1 scan = (/* V2 */ IMsScanV1)scanContainer.GetLastMsScan())
-                {
-                    DumpScan("GetLastScan()", scan);
-                }
+                IMsScanV2 scan = scanContainer.GetLastMsScan();
+                DumpScan("GetLastScan()", scan);
+            }
+
+            // write log files to Desktop
+            string docPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, "ScanDump.txt")))
+            {
+                foreach (string line in Logs)
+                    outputFile.WriteLine(line);
             }
         }
-
-        /// <summary>
-        /// Access to the scan container hosted by this instance.
-        /// </summary>
-        private IFusionMsScanContainer ScanContainer { get; set; }
-
-        /// <summary>
-        /// When a new acquisition starts we dump that information.
-        /// </summary>
-        /// <param name="sender">doesn't matter</param>
-        /// <param name="e">doesn't matter</param>
-        //private void ScanContainer_AcquisitionStarted(object sender, EventArgs e)
-        //{
-        //    Console.WriteLine("START OF ACQUISITION");
-        //}
-
-        /// <summary>
-        /// When an acquisitions ends we dump that information.
-        /// </summary>
-        /// <param name="sender">doesn't matter</param>
-        /// <param name="e">doesn't matter</param>
-        //private void ScanContainer_AcquisitionEnded(object sender, EventArgs e)
-        //{
-        //    Console.WriteLine("END OF ACQUISITION");
-        //}
 
         /// <summary>
         /// When a new scan arrives we dump that information in verbose mode.
@@ -110,10 +110,21 @@ namespace ScanDump
         /// <param name="e">used to access the scan information</param>
         private void ScanContainer_ScanArrived(object sender, MsScanEventArgs e)
         {
-            Console.WriteLine("Scan arrived");
-            // As an example we access all centroids
-            using (IMsScanV1 scan = (/* V2 */ IMsScanV1)e.GetScan())
+            IMsScanV2 scan = e.GetScan();
+            if (scan == null)
             {
+                string msg = string.Format("[{0:HH:mm:ss.ffff}] Empty scan", DateTime.Now);
+                WriteLog(msg, true);
+            }
+            else
+            {
+                string msg = string.Format("[{0:HH:mm:ss.ffff}] Received MS Scan Number {1} -- {2} peaks",
+                    DateTime.Now,
+                    scan.Header["Scan"],
+                    scan.CentroidCount);
+                WriteLog(msg, true);
+
+                // try to cast scanV2 to scanV1 and dump more information
                 DumpScan("Scan arrived", scan);
             }
         }
@@ -123,64 +134,75 @@ namespace ScanDump
         /// </summary>
         /// <param name="intro">string to prepend</param>
         /// <param name="scan">thing to dump</param>
-        private void DumpScan(string intro, IMsScanV1 scan)
+        private void DumpScan(string intro, IMsScanV2 scanV2)
         {
-            StringBuilder sb = new StringBuilder();
-            sb.AppendFormat(DateTime.Now.ToString());
-            sb.Append(": ");
-            sb.Append(intro);
-            sb.Append(", ");
-            if (scan == null)
+            // dump header
+            foreach (KeyValuePair<string, string> kvp in scanV2.Header)
             {
-                sb.Append("(empty scan)");
-                Console.WriteLine(sb.ToString());
-                return;
+                string msg = string.Format("Header Key = {0}, Value = {1}", kvp.Key, kvp.Value);
+                WriteLog(msg);
             }
-            else
+
+            // convert v2 scan to v1 scan and try to dump more info based on the example codes
+            try
             {
-                sb.Append("detector=");
-                sb.Append(scan.DetectorName);
-                if (scan.SpecificInformation.TryGetValue("Access Id:", out string id))
+                using (IMsScanV1 scanV1 = (IMsScanV1)scanV2)
                 {
-                    sb.Append(", id=");
-                    sb.Append(id);
-                }
-                Console.WriteLine(sb.ToString());
-            }
-
-            // This is rather noisy, dump all variables:
-            DumpVars(scan);
-
-            Console.Write("  Noise: ");
-            foreach (INoiseNode noise in scan.NoiseBand)
-            {
-                Console.Write("[{0}, {1}], ", noise.Mz, noise.Intensity);
-            }
-            Console.WriteLine();
-
-            // Not so useful:
-            Console.WriteLine("{0} centroids, {1} profile peaks", scan.CentroidCount ?? 0, scan.ProfileCount ?? 0);
-
-            // Iterate over all centroids and access dump all profile elements for each.
-            foreach (ICentroid centroid in scan.Centroids)
-            {
-                Console.WriteLine(" {0,10:F5}, I={1:E5}, C={2}, E={3,-5} F={4,-5} M={5,-5} R={6,-5} Res={7}",
-                                    centroid.Mz, centroid.Intensity, centroid.Charge ?? -1, centroid.IsExceptional, centroid.IsFragmented, centroid.IsMerged, centroid.IsReferenced, centroid.Resolution);
-                if (scan.HasProfileInformation)
-                {
-                    Console.Write("    Profile:");
-                    try
+                    StringBuilder sb = new StringBuilder();
+                    sb.AppendFormat(DateTime.Now.ToString());
+                    sb.Append(": ");
+                    sb.Append(intro);
+                    sb.Append(", ");
+                    sb.Append("detector=");
+                    sb.Append(scanV1.DetectorName);
+                    if (scanV1.SpecificInformation.TryGetValue("Access Id:", out string id))
                     {
-                        foreach (IMassIntensity profilePeak in centroid.Profile)
+                        sb.Append(", id=");
+                        sb.Append(id);
+                    }
+                    WriteLog(sb.ToString());
+
+                    // This is rather noisy, dump all variables:
+                    DumpVars(scanV1);
+
+                    WriteLog("  Noise: ");
+                    foreach (INoiseNode noise in scanV1.NoiseBand)
+                    {
+                        WriteLog(string.Format("[{0}, {1}], ", noise.Mz, noise.Intensity));
+                    }
+
+                    // Not so useful:
+                    string msg = string.Format("{0} centroids, {1} profile peaks", scanV1.CentroidCount ?? 0, scanV1.ProfileCount ?? 0);
+                    WriteLog(msg);
+
+                    // Iterate over all centroids and access dump all profile elements for each.
+                    foreach (ICentroid centroid in scanV1.Centroids)
+                    {
+                        msg = string.Format(" {0,10:F5}, I={1:E5}, C={2}, E={3,-5} F={4,-5} M={5,-5} R={6,-5} Res={7}",
+                                            centroid.Mz, centroid.Intensity, centroid.Charge ?? -1, centroid.IsExceptional, centroid.IsFragmented, centroid.IsMerged, centroid.IsReferenced, centroid.Resolution);
+                        WriteLog(msg);
+                        if (scanV1.HasProfileInformation)
                         {
-                            Console.Write(" [{0,10:F5},{1:E5}] ", profilePeak.Mz, profilePeak.Intensity);
+                            WriteLog("    Profile:");
+                            try
+                            {
+                                foreach (IMassIntensity profilePeak in centroid.Profile)
+                                {
+                                    msg = string.Format(" [{0,10:F5},{1:E5}] ", profilePeak.Mz, profilePeak.Intensity);
+                                    WriteLog(msg);
+                                }
+                            }
+                            catch
+                            {
+                            }
                         }
                     }
-                    catch
-                    {
-                    }
-                    Console.WriteLine();
+
                 }
+            }
+            catch (InvalidCastException)
+            {
+                WriteLog("Cannot convert scanV2 to scanV1", true);
             }
         }
 
@@ -190,9 +212,9 @@ namespace ScanDump
         /// <param name="scan">the scan for which to dump all variables</param>
         private void DumpVars(IMsScanV1 scan)
         {
-            Console.WriteLine("  COMMON");
+            WriteLog("  COMMON");
             DumpScanVars(scan.CommonInformation);
-            Console.WriteLine("  SPECIFIC");
+            WriteLog("  SPECIFIC");
             DumpScanVars(scan.SpecificInformation);
         }
 
@@ -224,8 +246,9 @@ namespace ScanDump
                 // i should have a reasonable value now
                 if (container.TryGetRawValue(name, out o, ref i))
                 {
-                    Console.WriteLine("  {0}: type={1}, text='{2}', raw='{3}'",
+                    string msg = string.Format("  {0}: type={1}, text='{2}', raw='{3}'",
                         name, i, s, o);
+                    WriteLog(msg);
                 }
             }
         }
