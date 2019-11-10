@@ -81,6 +81,30 @@ class Controller(LoggerMixin):
             plt.show()
 
 
+class IdleController(Controller):
+    """
+    A controller that doesn't do any controlling.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def handle_acquisition_open(self):
+        self.logger.info('Acquisition open')
+
+    def handle_acquisition_closing(self):
+        self.logger.info('Acquisition closing')
+
+    def _process_scan(self, scan):
+        new_tasks = []
+        return new_tasks
+
+    def update_state_after_scan(self, last_scan):
+        pass
+
+    def reset(self):
+        pass
+
 class SimpleMs1Controller(Controller):
     """
     A simple MS1 controller which does a full scan of the chemical sample, but no fragmentation
