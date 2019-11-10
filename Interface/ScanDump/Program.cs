@@ -1,31 +1,29 @@
-﻿//using System;
-//using IAPI_Assembly;
-//using Thermo.Interfaces.FusionAccess_V1;
-//using Thermo.Interfaces.FusionAccess_V1.MsScanContainer;
-//using Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer;
-//using Thermo.Interfaces.SpectrumFormat_V1;
-
-//using Thermo.TNG.Factory;
-//using System.Text;
-
-using Thermo.TNG.Factory;
+﻿extern alias v1;
+extern alias v2;
+using System;
+using System.Text;
 using Thermo.Interfaces.FusionAccess_V1;
 using Thermo.Interfaces.FusionAccess_V1.MsScanContainer;
-using Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer;
-using System;
+using Thermo.Interfaces.SpectrumFormat_V1;
+using Thermo.TNG.Factory;
+using v2::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer;
+using IInfoContainerV1 = v1::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.IInfoContainer;
+using IMsScanV1 = v1::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.IMsScan;
+using MsScanInformationSourceV1 = v1::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.MsScanInformationSource;
 
-namespace IAPI_Console
+// using ICentroid = v2::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.ICentroid;
+
+namespace ScanDump
 {
-    class Program
+    /// <summary>
+    /// This class presents the output of the scans being acquired by the instrument.
+    /// </summary>
+    internal class ScansOutput
     {
         static void Main(string[] args)
         {
             // Use the Factory creation method to create a Fusion Access Container
             IFusionInstrumentAccessContainer fusionContainer = Factory<IFusionInstrumentAccessContainer>.Create();
-
-            // Above won't work without a license! For testing, use the following FusionContainer that loads data from an mzML file.
-            // string filename = "C:\\Users\\joewa\\University of Glasgow\\Vinny Davies - CLDS Metabolomics Project\\Data\\multibeers_urine_data\\beers\\fragmentation\\mzML\\Beer_multibeers_1_T10_POS.mzML";
-            // IFusionInstrumentAccessContainer fusionContainer = new FusionContainer(filename);
 
             // Connect to the service by going 'online'
             fusionContainer.StartOnlineAccess();
@@ -40,36 +38,96 @@ namespace IAPI_Console
             // From the instrument container, get access to a particular instrument
             IFusionInstrumentAccess fusionAccess = fusionContainer.Get(1);
 
-            // Get the MS Scan Container from the fusion
-            IFusionMsScanContainer fusionScanContainer = fusionAccess.GetMsScanContainer(0);
-
-            // Register to MsScanArrived event
-            fusionScanContainer.MsScanArrived += FusionScanContainer_MsScanArrived;
-            Console.ReadLine();
+            // Dump scan output
+            ScansOutput scansOutput = new ScansOutput(fusionAccess);
 
         }
 
-        private static void FusionScanContainer_MsScanArrived(object sender, MsScanEventArgs e)
+        /// <summary>
+        /// Crate a new <see cref="ScansOutput"/>
+        /// </summary>
+        /// <param name="instrument">the instrument instance</param>
+        private ScansOutput(IFusionInstrumentAccess instrument)
         {
-            Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.IMsScan scan = e.GetScan();
-            Console.WriteLine("[{0:HH:mm:ss.ffff}] Received MS Scan Number {1} -- {2} peaks",
-                DateTime.Now,
-                scan.Header["Scan"],
-                scan.CentroidCount);
+            ScanContainer = instrument.GetMsScanContainer(0);
+            Console.WriteLine("Detector class: " + ScanContainer.DetectorClass);
 
-            // dump the centroids too
-            foreach (ICentroid centroid in scan.Centroids)
-            {
-                Console.WriteLine("{0} {1}", centroid.Mz, centroid.Intensity);
-            }
-
+            //ScanContainer.AcquisitionStreamOpening += new EventHandler<MsAcquisitionOpeningEventArgs>(ScanContainer_AcquisitionStarted);
+            //ScanContainer.AcquisitionStreamClosing += new EventHandler(ScanContainer_AcquisitionEnded);
+            ScanContainer.MsScanArrived += new EventHandler<MsScanEventArgs>(ScanContainer_ScanArrived);
         }
 
-        private void DumpScan(string intro, Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.IMsScan scan)
+        /// <summary>
+        /// Show the last acquired scan if that exists and cleanup.
+        /// </summary>
+        private void CloseDown()
+        {
+            // Be tolerant to thread-switches
+            IFusionMsScanContainer scanContainer = ScanContainer;
+            ScanContainer = null;
+
+            if (scanContainer != null)
+            {
+                scanContainer.MsScanArrived -= new EventHandler<MsScanEventArgs>(ScanContainer_ScanArrived);
+                //scanContainer.AcquisitionStreamClosing -= new EventHandler(ScanContainer_AcquisitionEnded);
+                //scanContainer.AcquisitionStreamOpening -= new EventHandler<MsAcquisitionOpeningEventArgs>(ScanContainer_AcquisitionStarted);
+                using (IMsScanV1 scan = (/* V2 */ IMsScanV1)scanContainer.GetLastMsScan())
+                {
+                    DumpScan("GetLastScan()", scan);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Access to the scan container hosted by this instance.
+        /// </summary>
+        private IFusionMsScanContainer ScanContainer { get; set; }
+
+        /// <summary>
+        /// When a new acquisition starts we dump that information.
+        /// </summary>
+        /// <param name="sender">doesn't matter</param>
+        /// <param name="e">doesn't matter</param>
+        //private void ScanContainer_AcquisitionStarted(object sender, EventArgs e)
+        //{
+        //    Console.WriteLine("START OF ACQUISITION");
+        //}
+
+        /// <summary>
+        /// When an acquisitions ends we dump that information.
+        /// </summary>
+        /// <param name="sender">doesn't matter</param>
+        /// <param name="e">doesn't matter</param>
+        //private void ScanContainer_AcquisitionEnded(object sender, EventArgs e)
+        //{
+        //    Console.WriteLine("END OF ACQUISITION");
+        //}
+
+        /// <summary>
+        /// When a new scan arrives we dump that information in verbose mode.
+        /// </summary>
+        /// <param name="sender">doesn't matter</param>
+        /// <param name="e">used to access the scan information</param>
+        private void ScanContainer_ScanArrived(object sender, MsScanEventArgs e)
+        {
+            Console.WriteLine("Scan arrived");
+            // As an example we access all centroids
+            using (IMsScanV1 scan = (/* V2 */ IMsScanV1)e.GetScan())
+            {
+                DumpScan("Scan arrived", scan);
+            }
+        }
+
+        /// <summary>
+        /// Dump a scan and prepend it with an intro string.
+        /// </summary>
+        /// <param name="intro">string to prepend</param>
+        /// <param name="scan">thing to dump</param>
+        private void DumpScan(string intro, IMsScanV1 scan)
         {
             StringBuilder sb = new StringBuilder();
-            // sb.AppendFormat(Instrument.Now.ToString(Program.TimeFormat));
-            // sb.Append(": ");
+            sb.AppendFormat(DateTime.Now.ToString());
+            sb.Append(": ");
             sb.Append(intro);
             sb.Append(", ");
             if (scan == null)
@@ -82,8 +140,7 @@ namespace IAPI_Console
             {
                 sb.Append("detector=");
                 sb.Append(scan.DetectorName);
-                string id;
-                if (scan.SpecificInformation.TryGetValue("Access Id:", out id))
+                if (scan.SpecificInformation.TryGetValue("Access Id:", out string id))
                 {
                     sb.Append(", id=");
                     sb.Append(id);
@@ -125,54 +182,52 @@ namespace IAPI_Console
                     Console.WriteLine();
                 }
             }
+        }
 
-            /// <summary>
-            /// Dump all variables belonging to a scan
-            /// </summary>
-            /// <param name="scan">the scan for which to dump all variables</param>
-            void DumpVars(IMsScan scanToDump)
+        /// <summary>
+        /// Dump all variables belonging to a scan
+        /// </summary>
+        /// <param name="scan">the scan for which to dump all variables</param>
+        private void DumpVars(IMsScanV1 scan)
+        {
+            Console.WriteLine("  COMMON");
+            DumpScanVars(scan.CommonInformation);
+            Console.WriteLine("  SPECIFIC");
+            DumpScanVars(scan.SpecificInformation);
+        }
+
+        /// <summary>
+        /// Dump all scan variables belonging to a specific container in a scan.
+        /// </summary>
+        /// <param name="container">container to dump all contained variables for</param>
+        private void DumpScanVars(IInfoContainerV1 container)
+        {
+            foreach (string s in container.Names)
             {
-                Console.WriteLine("  COMMON");
-                DumpInfo(scanToDump.CommonInformation);
-                Console.WriteLine("  SPECIFIC");
-                DumpInfo(scanToDump.SpecificInformation);
-            }
-
-            /// <summary>
-            /// Dump all scan variables belonging to a specific container in a scan.
-            /// </summary>
-            /// <param name="container">container to dump all contained variables for</param>
-            void DumpInfo(IInfoContainer container)
-            {
-                foreach (string s in container.Names)
-                {
-                    DumpVar(container, s);
-                }
-            }
-
-            /// <summary>
-            /// Dump the content of a single variable to the console after testing the consistency.
-            /// </summary>
-            /// <param name="container">container that variable belongs to</param>
-            /// <param name="name">name of the variable</param>
-            /// <param name="sb">buffer to be reused for speed</param>
-            void DumpVar(IInfoContainer container, string name)
-            {
-                object o = null;
-                string s = null;
-                MsScanInformationSource i = MsScanInformationSource.Unknown;
-
-                if (container.TryGetValue(name, out s, ref i))
-                {
-                    // i should have a reasonable value now
-                    if (container.TryGetRawValue(name, out o, ref i))
-                    {
-                        Console.WriteLine("  {0}: type={1}, text='{2}', raw='{3}'",
-                            name, i, s, o);
-                    }
-                }
+                DumpVar(container, s);
             }
         }
 
+        /// <summary>
+        /// Dump the content of a single variable to the console after testing the consistency.
+        /// </summary>
+        /// <param name="container">container that variable belongs to</param>
+        /// <param name="name">name of the variable</param>
+        /// <param name="sb">buffer to be reused for speed</param>
+        private void DumpVar(IInfoContainerV1 container, string name)
+        {
+            object o = null;
+            MsScanInformationSourceV1 i = MsScanInformationSourceV1.Unknown;
+
+            if (container.TryGetValue(name, out string s, ref i))
+            {
+                // i should have a reasonable value now
+                if (container.TryGetRawValue(name, out o, ref i))
+                {
+                    Console.WriteLine("  {0}: type={1}, text='{2}', raw='{3}'",
+                        name, i, s, o);
+                }
+            }
+        }
     }
 }

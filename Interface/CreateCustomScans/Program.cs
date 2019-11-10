@@ -9,7 +9,7 @@ using Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer;
 using IMsScan = Thermo.Interfaces.InstrumentAccess_V2.MsScanContainer.IMsScan;
 using ICentroid = Thermo.Interfaces.InstrumentAccess_V2.MsScanContainer.ICentroid;
 
-namespace UserAccess
+namespace CreateCustomScans
 {
     /// <summary>
     /// This class presents the output of the scans being acquired by the instrument.

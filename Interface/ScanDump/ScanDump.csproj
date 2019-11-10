@@ -6,11 +6,20 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\IAPI_Assembly\IAPI_Assembly.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="API-1.0">
+      <HintPath>..\iapi_lib\API-1.0.dll</HintPath>
+      <Aliases>v1,%(Aliases)</Aliases>
+    </Reference>
     <Reference Include="API-1.1">
       <HintPath>..\iapi_lib\API-1.1.dll</HintPath>
     </Reference>
     <Reference Include="API-2.0">
       <HintPath>..\iapi_lib\API-2.0.dll</HintPath>
+      <Aliases>v2</Aliases>
     </Reference>
     <Reference Include="Fusion.API-1.0">
       <HintPath>..\iapi_lib\tribrid\Fusion.API-1.0.dll</HintPath>
