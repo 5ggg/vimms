@@ -105,6 +105,7 @@ class IdleController(Controller):
     def reset(self):
         pass
 
+
 class SimpleMs1Controller(Controller):
     """
     A simple MS1 controller which does a full scan of the chemical sample, but no fragmentation
@@ -120,7 +121,9 @@ class SimpleMs1Controller(Controller):
         self.logger.info('Acquisition closing')
 
     def _process_scan(self, scan):
-        new_tasks = []
+        new_tasks = [
+            self.environment.get_default_scan_params()
+        ]
         return new_tasks
 
     def update_state_after_scan(self, last_scan):
