@@ -212,7 +212,10 @@ namespace CreateCustomScans
                 {
                     WriteLog("New custom scan has not been placed, connection to service broken!!", true);
                 }
-                WriteLog("Placed a new custom scan(" + cs.RunningNumber + ")", true);
+                else
+                {
+                    WriteLog("Placed a new custom scan(" + cs.RunningNumber + ")", true);
+                }
             }
             catch (Exception e)
             {
