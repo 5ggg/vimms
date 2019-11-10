@@ -63,6 +63,8 @@ namespace CreateCustomScans
 
         internal ScansTest(IFusionInstrumentAccess instrument)
         {
+            WriteLog("Constructor called", true);
+
             m_scans = instrument.Control.GetScans(false);
             m_scans.CanAcceptNextCustomScan += new EventHandler(Scans_CanAcceptNextCustomScan);
             m_scans.PossibleParametersChanged += new EventHandler(Scans_PossibleParametersChanged);
@@ -120,6 +122,7 @@ namespace CreateCustomScans
         /// <param name="disposeEvenManagedStuff">true to dispose managed and unmanaged resources; false to dispose unmanaged resources</param>
         protected void Dispose(bool disposeEvenManagedStuff)
         {
+            WriteLog("Dispose called", true);
             // prevent double disposing
             if (Interlocked.Exchange(ref m_disposed, 1) != 0)
             {
@@ -162,7 +165,7 @@ namespace CreateCustomScans
             IParameterDescription[] parameters = m_scans.PossibleParameters;
             if (parameters.Length == 0)
             {
-                WriteLog("No possible IScans parameters known.");
+                WriteLog("No possible IScans parameters known.", true);
                 return false;
             }
 
@@ -189,6 +192,8 @@ namespace CreateCustomScans
         /// </summary>
         private void StartNewScan()
         {
+            WriteLog("StartNewScan called", true);
+
             ICustomScan cs = m_scans.CreateCustomScan();
             cs.RunningNumber = m_runningNumber++;
 
@@ -231,7 +236,7 @@ namespace CreateCustomScans
         /// <param name="e">doesn't matter</param>
         private void Scans_CanAcceptNextCustomScan(object sender, EventArgs e)
         {
-            WriteLog("CanAcceptNextCustomScan", true);
+            WriteLog("Scans_CanAcceptNextCustomScan called", true);
             if ((m_scans != null) && (m_scans.PossibleParameters.Length > 0))
             {
                 // Assume we are able to place a new scan.
@@ -247,6 +252,7 @@ namespace CreateCustomScans
         /// <param name="e">doesn't matter</param>
         private void Scans_PossibleParametersChanged(object sender, EventArgs e)
         {
+            WriteLog("Scans_PossibleParametersChanged called", true);
             if (!DumpPossibleParameters())
             {
                 return;
