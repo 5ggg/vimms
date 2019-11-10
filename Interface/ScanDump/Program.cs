@@ -96,7 +96,8 @@ namespace ScanDump
 
             // write log files to Desktop
             string docPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-            using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, "ScanDump.txt")))
+            string fileName = "ScanDump_" + DateTime.Now.ToFileTime() + ".txt";
+            using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, fileName)))
             {
                 foreach (string line in Logs)
                     outputFile.WriteLine(line);
