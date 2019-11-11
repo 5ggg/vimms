@@ -131,7 +131,7 @@ namespace IAPI_Assembly
             }
         }
 
-        public string DetectorClass => throw new NotImplementedException();
+        public string DetectorClass => "No detector";
 
         public event EventHandler<MsScanEventArgs> MsScanArrived;
 

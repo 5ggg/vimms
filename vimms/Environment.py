@@ -1,3 +1,5 @@
+import sys
+import time
 from pathlib import Path
 
 from tqdm import tqdm
@@ -27,6 +29,9 @@ class Environment(LoggerMixin):
         self.min_time = min_time
         self.max_time = max_time
         self.progress_bar = progress_bar
+        self.default_scan_params = ScanParameters()
+        self.default_scan_params.set(ScanParameters.MS_LEVEL, 1)
+        self.default_scan_params.set(ScanParameters.ISOLATION_WINDOWS, [[DEFAULT_MS1_SCAN_WINDOW]])
 
     def run(self):
         """
@@ -100,7 +105,7 @@ class Environment(LoggerMixin):
         self.task_channel.extend(scan_params)
         while len(self.task_channel) > 0:
             new_task = self.task_channel.pop(0)
-            self.mass_spec.processing_queue.append(new_task)
+            self.mass_spec.add_to_processing_queue(new_task)
 
     def write_mzML(self, out_dir, out_file):
         """
@@ -123,10 +128,9 @@ class Environment(LoggerMixin):
         Sets initial environment, mass spec start time, default scan parameters and other values
         :return: None
         """
-        self.controller.environment = self
-        self.mass_spec.environment = self
+        self.controller.set_environment(self)
+        self.mass_spec.set_environment(self)
         self.mass_spec.time = self.min_time
-        self._set_default_scan_params()
 
         N, DEW = self._get_N_DEW(self.mass_spec.time)
         if N is not None:
@@ -134,15 +138,12 @@ class Environment(LoggerMixin):
         if DEW is not None:
             self.mass_spec.current_DEW = DEW
 
-    def _set_default_scan_params(self):
+    def get_default_scan_params(self):
         """
-        Sets default scan parmaeters
-        :return: None
+        Gets the default method scan parameters. Now it's set to do MS1 scan only.
+        :return: the default scan parameters
         """
-        default_scan = ScanParameters()
-        default_scan.set(ScanParameters.MS_LEVEL, 1)
-        default_scan.set(ScanParameters.ISOLATION_WINDOWS, [[DEFAULT_MS1_SCAN_WINDOW]])
-        self.mass_spec.set_repeating_scan(default_scan)
+        return self.default_scan_params
 
     def _get_N_DEW(self, time):
         """
@@ -156,3 +157,66 @@ class Environment(LoggerMixin):
             return self.controller.N, self.controller.rt_tol
         else:
             return None, None
+
+
+class IAPIEnvironment(Environment):
+
+    def __init__(self, mass_spec, controller, max_time, progress_bar=True):
+        super().__init__(mass_spec, controller, 0, max_time, progress_bar)
+        self.stop_time = None
+        self.last_time = None
+        self.pbar = tqdm(total=max_time, initial=0) if self.progress_bar else None
+
+    def run(self):
+        """
+        Runs the mass spec and controller
+        :return: None
+        """
+        # reset mass spec and set some initial values for each run
+        self.mass_spec.reset()
+        self.controller.reset()
+        self._set_initial_values()
+
+        # register event handlers from the controller
+        self.mass_spec.register(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.controller.handle_scan)
+        self.mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING,
+                                self.controller.handle_acquisition_open)
+        self.mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING,
+                                self.controller.handle_acquisition_closing)
+
+        self.last_time = time.time()
+        self.stop_time = self.last_time + self.max_time
+        self.mass_spec.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING)
+        self.mass_spec.run()
+
+    def add_scan(self, scan):
+        # stop event handling if stop_time has been reached
+        if time.time() > self.stop_time:
+            self.logger.debug('Unregistering MsScanArrived event handler')
+            self.mass_spec.fusionScanContainer.MsScanArrived -= self.mass_spec.step
+            self.mass_spec.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING)
+        else:
+            # handle the scan immediately by passing it to the controller
+            self.scan_channel.append(scan)
+            scan = self.scan_channel.pop(0)
+            tasks = self.controller.handle_scan(scan)
+            self.add_tasks(tasks) # push new tasks to mass spec queue
+
+            # update controller internal states AFTER a scan has been generated and handled
+            self.controller.update_state_after_scan(scan)
+
+            # increment progress bar
+            self._update_progress_bar(self.pbar, scan)
+
+    def _update_progress_bar(self, pbar, scan):
+        if pbar is not None:
+            current_time = time.time()
+            elapsed = current_time - self.last_time
+            self.last_time = current_time
+            N, DEW = self._get_N_DEW(self.mass_spec.time)
+            if N is not None and DEW is not None:
+                msg = '(%.3fs) ms_level=%d N=%d DEW=%d' % (elapsed, scan.ms_level, N, DEW)
+            else:
+                msg = '(%.3fs) ms_level=%d' % (elapsed, scan.ms_level)
+            pbar.update(elapsed)
+            pbar.set_description(msg)

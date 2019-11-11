@@ -1,8 +1,10 @@
 import math
-from collections import defaultdict
+import sys
+import time
 
+import clr
 import numpy as np
-import trio
+from clr import ListAssemblies
 from events import Events
 
 from vimms.Common import LoggerMixin, adduct_transformation
@@ -177,6 +179,8 @@ class IndependentMassSpectrometer(LoggerMixin):
     MS_SCAN_ARRIVED = 'MsScanArrived'
     ACQUISITION_STREAM_OPENING = 'AcquisitionStreamOpening'
     ACQUISITION_STREAM_CLOSING = 'AcquisitionStreamClosing'
+    CAN_ACCEPT_NEXT_CUSTOM_SCAN = 'CanAcceptNextCustomScan'
+    POSSIBLE_PARAMETERS_CHANGED = 'PossibleParametersChanged'
 
     def __init__(self, ionisation_mode, chemicals, peak_sampler, add_noise=False):
         """
@@ -194,7 +198,6 @@ class IndependentMassSpectrometer(LoggerMixin):
 
         # current task queue
         self.processing_queue = []
-        self.repeating_scan_parameters = None
         self.environment = None
 
         # the events here follows IAPI events
@@ -227,6 +230,9 @@ class IndependentMassSpectrometer(LoggerMixin):
     ####################################################################################################################
     # Public methods
     ####################################################################################################################
+
+    def set_environment(self, env):
+        self.environment = env
 
     def step(self):
         """
@@ -275,21 +281,6 @@ class IndependentMassSpectrometer(LoggerMixin):
         """
         self.processing_queue.append(param)
 
-    def disable_repeating_scan(self):
-        """
-        Disable repeating scan
-        :return: None
-        """
-        self.set_repeating_scan(None)
-
-    def set_repeating_scan(self, params):
-        """
-        Sets the parameters for the default repeating scans that will be done when the processing queue is empty.
-        :param params:
-        :return:
-        """
-        self.repeating_scan_parameters = params
-
     def reset(self):
         """
         Resets the mass spec state so we can reuse it again
@@ -300,7 +291,6 @@ class IndependentMassSpectrometer(LoggerMixin):
         self.time = 0
         self.idx = 0
         self.processing_queue = []
-        self.repeating_scan_parameters = None
         self.current_N = 0
         self.current_DEW = 0
         self.fragmentation_events = []
@@ -316,7 +306,7 @@ class IndependentMassSpectrometer(LoggerMixin):
             raise ValueError('Unknown event name')
 
         e = self.event_dict[event_name]
-        if event_name == self.MS_SCAN_ARRIVED: # if it's a scan event, then pass the scan to the controller
+        if event_name == self.MS_SCAN_ARRIVED:  # if it's a scan event, then pass the scan to the controller
             scan = arg
             self.environment.add_scan(scan)
         else:
@@ -361,7 +351,7 @@ class IndependentMassSpectrometer(LoggerMixin):
         """
         # if the processing queue is empty, then just do the repeating scan
         if len(self.processing_queue) == 0:
-            param = self.repeating_scan_parameters
+            param = self.environment.get_default_scan_params()
         else:
             # otherwise pop the parameter for the next scan from the queue
             param = self.processing_queue.pop(0)
@@ -577,43 +567,108 @@ class IndependentMassSpectrometer(LoggerMixin):
         return False
 
 
-class AsyncMassSpectrometer(IndependentMassSpectrometer):
+class IAPIMassSpectrometer(IndependentMassSpectrometer):
 
-    def __init__(self, ionisation_mode, chemicals, peak_sampler, spectra_send_channel, task_receive_channel,
-                 add_noise=False, dynamic_exclusion=True):
-        super().__init__(ionisation_mode, chemicals, peak_sampler, add_noise, dynamic_exclusion)
-        self.spectra_send_channel = spectra_send_channel
-        self.task_receive_channel = task_receive_channel
+    def __init__(self, ionisation_mode, ref_dir, filename=None):
+        super().__init__(ionisation_mode, [], None, add_noise=False)
 
-    def _get_param(self):
-        # get current task
-        # check if there's a new task from the controller, if yes then add to task queue
+        # add IAPI .dll location to Python path.
+        if ref_dir not in sys.path:
+            sys.path.append(ref_dir)
+
+        # make sure IAPI assemblies can be found
+        assert clr.FindAssembly('IAPI_Assembly') is not None
+        ref = clr.AddReference('IAPI_Assembly')
+        self.logger.debug('AddReference: %s' % ref)
+
+        short = list(ListAssemblies(False))
+        self.logger.debug('ListAssemblies: %s', short)
+        assert 'Fusion.API-1.0' in short
+        assert 'API-2.0' in short
+        assert 'Spectrum-1.0' in short
+        self.filename = filename
+
+        self.fusionScanContainer = None
+        self.fusionScanControl = None
+
+    def run(self):
+        self.start_time = time.time()
+
+        # if filename is provided, then we create a Fusion Container that loads test mzML data
+        if self.filename is not None:
+            # initialise fake FusionContainer that reads data from mzML file
+            from IAPI_Assembly import FusionContainer
+            fusionContainer = FusionContainer(self.filename)
+
+        else: # TODO: untested codes to connect to the Fusion
+            clr.AddReference('Thermo.TNG.Factory')
+            from Thermo.Interfaces.FusionAccess_V1 import IFusionInstrumentAccessContainer
+            from Thermo.TNG.Factory import Factory
+            cs = Factory[IFusionInstrumentAccessContainer]
+            fusionContainer = cs.Create([IFusionInstrumentAccessContainer])
+
+        # start fusion container
+        self.logger.info('FusionContainer going online')
+        fusionContainer.StartOnlineAccess()
+        while not fusionContainer.ServiceConnected:
+            time.sleep(0.1)
+        self.logger.info('FusionContainer is connected!!')
+
+        # get fusion scan container (assume it's the first)
+        fusionAccess = fusionContainer.Get(1)
+        self.fusionScanContainer = fusionAccess.GetMsScanContainer(0)
+
+        # register scan event handler
+        self.fusionScanContainer.MsScanArrived += self.step
+
+        # get scan control interface
+        self.logger.info('Getting scan control interface')
         try:
-            received = self.task_receive_channel.receive_nowait()
-            received_tasks = received['tasks']
-            received_scan = received['scan']
-            print('mass_spec received %d new tasks for %s' % (len(received_tasks), received_scan))
-            self.processing_queue.extend(received_tasks)
-        except trio.WouldBlock:  # no new task
-            pass
+            self.fusionScanControl = fusionAccess.Control.GetScans(False)
+            if self.fusionScanControl is not None:
+                self.logger.info('Obtained scan control interface')
+                self.fusionScanControl.CanAcceptNextCustomScan += self.handleCanAcceptNextCustomScan
+                self.fusionScanControl.PossibleParametersChanged += self.handlePossibleParametersChanged
+                self._try_send_custom_scan()
+        except Exception as e:
+            self.logger.info('Unable to obtain scan control interface: %s' % e)
 
-        # if the processing queue is empty, then just do the repeating scan
-        if len(self.processing_queue) == 0:
-            param = self.repeating_scan_parameters
-        else:
-            # otherwise pop the parameter for the next scan from the queue
-            param = self.processing_queue.pop(0)
-        return param
+    def step(self, sender, args):
+        # convert IAPI scan object to Vimms scan object
+        iapi_scan = args.GetScan()
 
-    async def fire_event(self, event_name, arg=None):
+        scan_id = self.idx
+        self.time = time.time()
+        scan_time = self.time - self.start_time  # TODO: not correct? This should be the scan start time from the mass spec
+        scan_mzs = np.array([c.Mz for c in iapi_scan.Centroids])
+        scan_intensities = np.array([c.Intensity for c in iapi_scan.Centroids])
+        ms_level = 1  # TODO: don't know how to extract ms_level from an IAPI scan
+
+        vimms_scan = Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time, scan_duration=None,
+                          isolation_windows=None, param=None)
+        # title = 'idx %d iapi_scan %s %d peaks --> %s' % (
+        #     self.idx, iapi_scan.Header['Scan'], iapi_scan.CentroidCount, vimms_scan)
+        # self.logger.debug(title)
+        self.fire_event(self.MS_SCAN_ARRIVED, vimms_scan)
+        self.idx += 1
+
+    def handleCanAcceptNextCustomScan(self, sender, args):
+        self.logger.debug('handleCanAcceptNextCustomScan called')
+        self.fire_event(self.CAN_ACCEPT_NEXT_CUSTOM_SCAN, args)
+
+    def handlePossibleParametersChanged(self, sender, args):
+        self.logger.debug('handlePossibleParametersChanged called')
+        self.fire_event(self.POSSIBLE_PARAMETERS_CHANGED, args)
+
+    def fire_event(self, event_name, arg=None):
         if event_name not in self.event_dict:
             raise ValueError('Unknown event name')
 
         if event_name == self.MS_SCAN_ARRIVED:  # add new scan to spectra send channel
-            assert arg is not None
             scan = arg
-            await self.spectra_send_channel.send(scan)
-            print('mass_spec sent', scan)
+            self.environment.add_scan(scan)
+        elif event_name == self.CAN_ACCEPT_NEXT_CUSTOM_SCAN or event_name == self.POSSIBLE_PARAMETERS_CHANGED:
+            self._try_send_custom_scan()
         else:
             # pretend to fire the event
             # actually here we just runs the event handler method directly
@@ -622,3 +677,17 @@ class AsyncMassSpectrometer(IndependentMassSpectrometer):
                 e(arg)
             else:
                 e()
+
+    def _try_send_custom_scan(self):
+        if self.fusionScanControl is not None and len(self.fusionScanControl.PossibleParameters) > 0:
+            # get one scan param from the mass spec processing queue and send it over
+            param = self._get_param()
+            if param is not None:
+                self.logger.debug('Trying to send a custom scan: %s' % param)
+                raise NotImplementedError()
+            else:
+                self.logger.debug('Got a None custom scan')
+
+    def reset(self):
+        # TODO: need to implement later
+        pass
