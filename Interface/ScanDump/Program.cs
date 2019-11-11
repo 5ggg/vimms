@@ -14,6 +14,10 @@ using Thermo.Interfaces.SpectrumFormat_V1;
 using Thermo.TNG.Factory;
 using v2::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer;
 
+using v2::Thermo.Interfaces.InstrumentAccess_V1;
+using v2::Thermo.Interfaces.InstrumentAccess_V1.Control;
+using v2::Thermo.Interfaces.InstrumentAccess_V1.Control.Scans;
+
 using IInfoContainerV1 = v1::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.IInfoContainer;
 using IMsScanV1 = v1::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.IMsScan;
 using IMsScanV2 = v2::Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer.IMsScan;
@@ -27,6 +31,7 @@ namespace ScanDump
     {
         private List<string> Logs { get; set; }
         private IFusionMsScanContainer ScanContainer { get; set; }
+        private IScans m_scans;
 
         static void Main(string[] args)
         {
@@ -67,6 +72,17 @@ namespace ScanDump
             Logs = new List<string>();
             ScanContainer = instrument.GetMsScanContainer(0);
             WriteLog("Detector class: " + ScanContainer.DetectorClass);
+
+            // Dump key-value pairs in cs.Values
+            WriteLog("Custom scan parameters: ");
+            ICustomScan cs = m_scans.CreateCustomScan();
+            foreach (KeyValuePair<string, string> kvp in cs.Values)
+            {
+                string msg = string.Format("cs.Values Key = {0}, Value = {1}", kvp.Key, kvp.Value);
+                WriteLog(msg, true);
+            }
+
+            // Set event handler for ms scan arrived
             ScanContainer.MsScanArrived += new EventHandler<MsScanEventArgs>(ScanContainer_ScanArrived);
         }
 
