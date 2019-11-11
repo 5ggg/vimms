@@ -653,3 +653,36 @@ class DiaWindows(object):
                                              extra_bins).locations
         else:
             raise ValueError("Incorrect dia_design selected. Must be 'basic' or 'kaufmann'.")
+
+
+class TestController(TopNController):
+    def __init__(self, ionisation_mode, N, isolation_window, mz_tol, rt_tol, min_ms1_intensity):
+        self.extra_scans_done = False
+        super().__init__(ionisation_mode, N, isolation_window, mz_tol, rt_tol, min_ms1_intensity)
+
+    def _process_scan(self, scan):
+        # if there's a previous ms1 scan to process
+        new_tasks = []
+        rt2scan = 400  # TODO: Change as required
+        if self.last_ms1_scan is not None and self.extra_scans_done is False:
+            if self.last_ms1_scan.rt > rt2scan:
+                mzs = np.array([100, 200, 300, 400])
+                intensities = np.array([1 , 2, 3, 4])
+
+                # loop over points in decreasing intensity
+                fragmented_count = 0
+                idx = np.argsort(intensities)[::-1]
+                for i in idx:
+                    mz = mzs[i]
+                    intensity = intensities[i]
+
+                    # create a new ms2 scan parameter to be sent to the mass spec
+                    dda_scan_params = self._get_dda_scan_param(mz, intensity, self.isolation_window,
+                                                               self.mz_tol, self.rt_tol)
+                    new_tasks.append(dda_scan_params)
+                    fragmented_count += 1
+
+                # set this ms1 scan as has been processed
+                self.last_ms1_scan = None
+                self.extra_scans_done = True
+        return new_tasks
