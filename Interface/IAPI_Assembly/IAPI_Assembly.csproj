@@ -9,6 +9,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="API-1.1">
+      <HintPath>..\iapi_lib\API-1.1.dll</HintPath>
+    </Reference>
     <Reference Include="API-2.0">
       <HintPath>..\iapi_lib\API-2.0.dll</HintPath>
     </Reference>
