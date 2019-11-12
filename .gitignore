@@ -136,3 +136,5 @@ Interface/mzMLReader/bin/Debug/
 Interface/mzMLReader/obj/
 Interface/ScanDump/bin/Debug/
 Interface/ScanDump/obj/
+Interface/FusionConnector/obj/
+Interface/FusionConnector/bin/
