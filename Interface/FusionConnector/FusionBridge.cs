@@ -7,81 +7,26 @@ using Thermo.Interfaces.FusionAccess_V1.Control;
 using Thermo.Interfaces.FusionAccess_V1.MsScanContainer;
 using Thermo.Interfaces.InstrumentAccess_V1.Control;
 using Thermo.Interfaces.InstrumentAccess_V1.Control.Acquisition;
-using Thermo.Interfaces.InstrumentAccess_V1.Control.Acquisition.Modes;
 using Thermo.Interfaces.InstrumentAccess_V1.Control.Scans;
 using Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer;
 using Thermo.TNG.Factory;
 
 namespace FusionConnector
 {
-    class FusionBridge
+    public class FusionBridge
     {
         private List<string> Logs { get; set; }
         private IFusionInstrumentAccess InstrumentAccess { get; set; }
         private IFusionMsScanContainer ScanContainer { get; set; }
         private IFusionControl InstrumentControl { get; set; }
-        private IScans ScanControl { get; set; }
+        public IScans ScanControl { get; set; }
         private long runningNumber = 100000;    // start with an offset to make sure it's "us"
 
-        static void Main(string[] args)
-        {
-            Console.WriteLine("Hello World!");
-            FusionBridge fusionBridge = new FusionBridge();
+        private EventHandler<MsScanEventArgs> UserScanArriveHandler { get; set; }
+        private EventHandler<StateChangedEventArgs> UserStateChangedHandler { get; set; }
+        private EventHandler UserCreateCustomScanHandler { get; set; }
 
-            // Register system mode and state changed event
-            fusionBridge.InstrumentControl.Acquisition.StateChanged += (object sender, StateChangedEventArgs e) =>
-            {
-                IState state = e.State;
-                string msg = string.Format("System mode = {0}, system state = {1}", state.SystemMode,
-                    state.SystemState);
-                fusionBridge.WriteLog(msg);
-            };
-
-            // Register scan arrival event handler
-            fusionBridge.ScanContainer.MsScanArrived += (object sender, MsScanEventArgs e) =>
-            {
-                IMsScan scan = e.GetScan();
-                if (scan == null)
-                {
-                    fusionBridge.WriteLog(string.Format("[{0:HH:mm:ss.ffff}] Empty scan", DateTime.Now));
-                }
-                else
-                {
-                    fusionBridge.WriteLog(string.Format("[{0:HH:mm:ss.ffff}] Received MS Scan Number {1} -- {2} peaks",
-                    DateTime.Now,
-                    scan.Header["Scan"],
-                    scan.CentroidCount));
-                }
-            };
-
-            // send the initial custom scan
-            double startMz = 524;
-            double endMz = 524.5;
-            double isolationWidth = 0.7;
-            double collisionEnergy = 35;
-
-            double precursorMass = startMz;
-            fusionBridge.CreateCustomScan(precursorMass, isolationWidth, collisionEnergy, 2);
-            fusionBridge.ScanControl.CanAcceptNextCustomScan += (object sender, EventArgs e) =>
-            {
-                if (precursorMass < endMz)
-                {
-                    precursorMass += 0.02;
-                    fusionBridge.CreateCustomScan(precursorMass, isolationWidth, collisionEnergy, 2);
-                }
-            };
-
-            // https://stackoverflow.com/questions/2555292/how-to-run-code-before-program-exit
-            // https://stackoverflow.com/questions/33060838/c-sharp-processexit-event-handler-not-triggering-code
-            AppDomain.CurrentDomain.ProcessExit += (sender, EventArgs) =>
-            {
-                fusionBridge.CloseDown();
-            };
-            Console.ReadLine();
-
-        }
-
-        FusionBridge()
+        public FusionBridge()
         {
             Logs = new List<string>();
             WriteLog("FusionBridge constructor called", true);
@@ -121,6 +66,58 @@ namespace FusionConnector
             string msg = string.Format("System mode = {0}, system state = {1}", state.SystemMode,
                 state.SystemState);
             WriteLog(msg);
+
+        }
+
+        public void SetEventHandlers(EventHandler<MsScanEventArgs> userScanArriveHandler, EventHandler<StateChangedEventArgs> userStateChangeHandler,
+            EventHandler userCreateCustomScanHandler)
+        {
+            // save user-provided event handlers
+            UserScanArriveHandler = userScanArriveHandler;
+            UserStateChangedHandler = userStateChangeHandler;
+            UserCreateCustomScanHandler = userCreateCustomScanHandler;
+
+            // register various event handlers
+            ScanContainer.MsScanArrived += ScanArriveHandler;
+            InstrumentControl.Acquisition.StateChanged += StateChangedHandler;
+            ScanControl.CanAcceptNextCustomScan += CreateCustomScanHandlerHandler;
+        }
+
+        private void ScanArriveHandler(object sender, MsScanEventArgs e)
+        {
+            IMsScan scan = e.GetScan();
+            if (scan == null)
+            {
+                WriteLog(string.Format("[{0:HH:mm:ss.ffff}] Empty scan", DateTime.Now));
+            }
+            else
+            {
+                WriteLog(string.Format("[{0:HH:mm:ss.ffff}] Received MS Scan Number {1} -- {2} peaks",
+                DateTime.Now,
+                scan.Header["Scan"],
+                scan.CentroidCount));
+            }
+
+            // run user scan event handler
+            UserScanArriveHandler(sender, e);
+        }
+
+        private void StateChangedHandler(object sender, StateChangedEventArgs e)
+        {
+            IState state = e.State;
+            string msg = string.Format("System mode = {0}, system state = {1}", state.SystemMode,
+                state.SystemState);
+            WriteLog(msg);
+
+            // run user state changed handler
+            UserStateChangedHandler(sender, e);
+        }
+
+        private void CreateCustomScanHandlerHandler(object sender, EventArgs e)
+        {
+            WriteLog("UserCreateCustomScan starts");
+            UserCreateCustomScanHandler(sender, e);
+            WriteLog("UserCreateCustomScan ends");
         }
 
         public void DumpPossibleParameters()
@@ -150,7 +147,7 @@ namespace FusionConnector
         }
 
         public void CreateCustomScan(double precursorMass, double isolationWidth, double collisionEnergy, int msLevel,
-            string polarity="Positive", double firstMass=50, double lastMass=600, double singleProcessingDelay=0.50D)
+            string polarity = "Positive", double firstMass = 50, double lastMass = 600, double singleProcessingDelay = 0.50D)
         {
             WriteLog("StartNewScan called", true);
             if (ScanControl.PossibleParameters.Length > 0)
@@ -210,7 +207,7 @@ namespace FusionConnector
             }
         }
 
-        private void WriteLog(string msg, bool print = false)
+        public void WriteLog(string msg, bool print = false)
         {
             string msgWithTimestamp = string.Format("[{0:HH:mm:ss.ffff}] {1}", DateTime.Now, msg);
             Logs.Add(msgWithTimestamp);
@@ -220,7 +217,7 @@ namespace FusionConnector
             }
         }
 
-        private void CloseDown()
+        public void CloseDown()
         {
             WriteLog("Goodbye Cruel World", true);
 
@@ -230,7 +227,9 @@ namespace FusionConnector
             using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, fileName)))
             {
                 foreach (string line in Logs)
+                {
                     outputFile.WriteLine(line);
+                }
             }
         }
 
