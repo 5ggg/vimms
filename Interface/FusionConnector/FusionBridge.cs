@@ -26,13 +26,25 @@ namespace FusionConnector
         private EventHandler<StateChangedEventArgs> UserStateChangedHandler { get; set; }
         private EventHandler UserCreateCustomScanHandler { get; set; }
 
-        public FusionBridge()
+        public FusionBridge(string debugMzML = null)
         {
             Logs = new List<string>();
-            WriteLog("FusionBridge constructor called", true);
 
-            //// Use the Factory creation method to create a Fusion Access Container
-            IFusionInstrumentAccessContainer fusionContainer = Factory<IFusionInstrumentAccessContainer>.Create();
+
+            IFusionInstrumentAccessContainer fusionContainer = null;
+            if (debugMzML != null) // create fake Fusion container that reads from mzML file
+            {
+                WriteLog("FusionBridge constructor called in debug mode", true);
+                WriteLog(string.Format("Reading scans from {0}", debugMzML), true);
+                fusionContainer = new MzMLFusionContainer(debugMzML);
+            }
+            else // needs license to connect to the real instrument
+            {
+                //// Use the Factory creation method to create a Fusion Access Container
+                WriteLog("FusionBridge constructor called", true);
+                fusionContainer = Factory<IFusionInstrumentAccessContainer>.Create();
+            }
+
 
             // Connect to the service by going 'online'
             fusionContainer.StartOnlineAccess();
@@ -72,15 +84,23 @@ namespace FusionConnector
         public void SetEventHandlers(EventHandler<MsScanEventArgs> userScanArriveHandler, EventHandler<StateChangedEventArgs> userStateChangeHandler,
             EventHandler userCreateCustomScanHandler)
         {
-            // save user-provided event handlers
-            UserScanArriveHandler = userScanArriveHandler;
-            UserStateChangedHandler = userStateChangeHandler;
-            UserCreateCustomScanHandler = userCreateCustomScanHandler;
+            // if not null, save user-provided event handlers and attach the appropriate event handlers
 
-            // register various event handlers
-            ScanContainer.MsScanArrived += ScanArriveHandler;
-            InstrumentControl.Acquisition.StateChanged += StateChangedHandler;
-            ScanControl.CanAcceptNextCustomScan += CreateCustomScanHandlerHandler;
+            if (userScanArriveHandler != null)
+            {
+                UserScanArriveHandler = userScanArriveHandler;
+                ScanContainer.MsScanArrived += ScanArriveHandler;
+            }
+            if (userStateChangeHandler != null)
+            {
+                UserStateChangedHandler = userStateChangeHandler;
+                InstrumentControl.Acquisition.StateChanged += StateChangedHandler;
+            }
+            if (userCreateCustomScanHandler != null)
+            {
+                UserCreateCustomScanHandler = userCreateCustomScanHandler;
+                ScanControl.CanAcceptNextCustomScan += CreateCustomScanHandlerHandler;
+            }
         }
 
         private void ScanArriveHandler(object sender, MsScanEventArgs e)
@@ -88,14 +108,14 @@ namespace FusionConnector
             IMsScan scan = e.GetScan();
             if (scan == null)
             {
-                WriteLog(string.Format("[{0:HH:mm:ss.ffff}] Empty scan", DateTime.Now));
+                WriteLog(string.Format("[{0:HH:mm:ss.ffff}] Empty scan", DateTime.Now), true);
             }
             else
             {
                 WriteLog(string.Format("[{0:HH:mm:ss.ffff}] Received MS Scan Number {1} -- {2} peaks",
                 DateTime.Now,
                 scan.Header["Scan"],
-                scan.CentroidCount));
+                scan.CentroidCount), true);
             }
 
             // run user scan event handler
@@ -107,7 +127,7 @@ namespace FusionConnector
             IState state = e.State;
             string msg = string.Format("System mode = {0}, system state = {1}", state.SystemMode,
                 state.SystemState);
-            WriteLog(msg);
+            WriteLog(msg, true);
 
             // run user state changed handler
             UserStateChangedHandler(sender, e);
@@ -115,9 +135,9 @@ namespace FusionConnector
 
         private void CreateCustomScanHandlerHandler(object sender, EventArgs e)
         {
-            WriteLog("UserCreateCustomScan starts");
+            WriteLog("UserCreateCustomScan starts", true);
             UserCreateCustomScanHandler(sender, e);
-            WriteLog("UserCreateCustomScan ends");
+            WriteLog("UserCreateCustomScan ends", true);
         }
 
         public void DumpPossibleParameters()

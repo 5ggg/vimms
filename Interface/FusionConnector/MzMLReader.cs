@@ -12,6 +12,13 @@ using System.Collections.Generic;
 using static PSI_Interface.MSData.SimpleMzMLReader;
 using Thermo.Interfaces.SpectrumFormat_V1;
 using System.Threading.Tasks;
+using Thermo.Interfaces.FusionAccess_V1.Control.Peripherals;
+using Thermo.Interfaces.InstrumentAccess_V1.Control.Acquisition;
+using Thermo.Interfaces.InstrumentAccess_V1.Control.InstrumentValues;
+using Thermo.Interfaces.InstrumentAccess_V1.Control.Methods;
+using Thermo.Interfaces.InstrumentAccess_V1.Control.Scans;
+using Thermo.Interfaces.InstrumentAccess_V1.Control.Acquisition.Modes;
+using Thermo.Interfaces.InstrumentAccess_V1.Control.Acquisition.Workflow;
 
 namespace FusionConnector
 {
@@ -66,8 +73,6 @@ namespace FusionConnector
             _spectra = spectra;
         }
 
-        public IFusionControl Control => throw new NotImplementedException();
-
         public int InstrumentId => throw new NotImplementedException();
 
         public string InstrumentName => throw new NotImplementedException();
@@ -79,6 +84,8 @@ namespace FusionConnector
         public string[] DetectorClasses => throw new NotImplementedException();
 
         public int CountAnalogChannels => throw new NotImplementedException();
+
+        public IFusionControl Control => new InstrumentControl();
 
         IControl IInstrumentAccess.Control => throw new NotImplementedException();
 
@@ -93,21 +100,230 @@ namespace FusionConnector
 
         public IFusionMsScanContainer GetMsScanContainer(int msDetectorSet)
         {
-            return new MsScanContainer(_spectra);
+            return new ScanContainer(_spectra);
         }
 
         IMsScanContainer IInstrumentAccess.GetMsScanContainer(int msDetectorSet)
         {
-            return new MsScanContainer(_spectra);
+            return new ScanContainer(_spectra);
         }
     }
 
-    class MsScanContainer : IFusionMsScanContainer
+    class InstrumentControl : IFusionControl
+    {
+        public ISyringePumpControl SyringePumpControl => throw new NotImplementedException();
+
+        public IInstrumentValues InstrumentValues => throw new NotImplementedException();
+
+        public IMethods Methods => throw new NotImplementedException();
+
+        public IAcquisition Acquisition => new InstrumentControlAcquisition();
+
+        public IScans GetScans(bool exclusiveAccess)
+        {
+            return new ScanControl();
+        }
+    }
+
+    class InstrumentControlAcquisition : IAcquisition
+    {
+        public IState State => new MyAcquisitionState();
+
+        public bool CanPause => throw new NotImplementedException();
+
+        public bool CanResume => throw new NotImplementedException();
+
+        public event EventHandler<StateChangedEventArgs> StateChanged;
+        public event EventHandler<AcquisitionOpeningEventArgs> AcquisitionStreamOpening;
+        public event EventHandler AcquisitionStreamClosing;
+
+        public void CancelAcquisition()
+        {
+            throw new NotImplementedException();
+        }
+
+        public IAcquisitionLimitedByCount CreateAcquisitionLimitedByCount(int count)
+        {
+            throw new NotImplementedException();
+        }
+
+        public IAcquisitionLimitedByTime CreateAcquisitionLimitedByDuration(TimeSpan duration)
+        {
+            throw new NotImplementedException();
+        }
+
+        public IForcedOffMode CreateForcedOffMode()
+        {
+            throw new NotImplementedException();
+        }
+
+        public IForcedStandbyMode CreateForcedStandbyMode()
+        {
+            throw new NotImplementedException();
+        }
+
+        public IAcquisitionMethodRun CreateMethodAcquisition(string methodFileName)
+        {
+            throw new NotImplementedException();
+        }
+
+        public IAcquisitionMethodRun CreateMethodAcquisition(string methodFileName, TimeSpan duration)
+        {
+            throw new NotImplementedException();
+        }
+
+        public IOffMode CreateOffMode()
+        {
+            throw new NotImplementedException();
+        }
+
+        public IOnMode CreateOnMode()
+        {
+            throw new NotImplementedException();
+        }
+
+        public IAcquisitionWorkflow CreatePermanentAcquisition()
+        {
+            throw new NotImplementedException();
+        }
+
+        public IStandbyMode CreateStandbyMode()
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Pause()
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Resume()
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SetMode(IMode newMode)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void StartAcquisition(IAcquisitionWorkflow acquisition)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool WaitFor(TimeSpan duration, Func<InstrumentState, SystemMode, bool> continuation)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    class MyAcquisitionState : IState
+    {
+        public SystemMode SystemMode => SystemMode.On;
+
+        public InstrumentState SystemState => InstrumentState.ReadyToDownload;
+    }
+
+    class ScanControl : IScans
+    {
+        public IParameterDescription[] PossibleParameters => new MyParameterDescription[3];
+        public List<ICustomScan> placedCustomScans = new List<ICustomScan>();
+
+        public ScanControl()
+        {
+            PossibleParameters[0] = new MyParameterDescription("CollisionEnergy", "string (0;200)", "", "The normalized collision " +
+                "energy (NCE) It is expressed as a string of values, with each value sepearted by a ';' delimiter. A maximum of 10 values can be defined.");
+            PossibleParameters[1] = new MyParameterDescription("ScanRate", "Normal,Enchanced,Zoom,Rapid,Turbo", "Normal", "The scan rate of the ion trap");
+            PossibleParameters[2] = new MyParameterDescription("FirstMass", "string (50;2000)", "150", "The first mass of the scan range. It is expressed as " +
+                "a string of values, with each value sepearted by a ';' delimiter. A maximum of 10 values can be defined.");
+        }
+
+        public event EventHandler PossibleParametersChanged;
+        public event EventHandler CanAcceptNextCustomScan;
+
+        public bool CancelCustomScan()
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool CancelRepetition()
+        {
+            throw new NotImplementedException();
+        }
+
+        public ICustomScan CreateCustomScan()
+        {
+            return new MyCustomScan();
+        }
+
+        public IRepeatingScan CreateRepeatingScan()
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Dispose()
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool SetCustomScan(ICustomScan scan)
+        {
+            placedCustomScans.Add(scan);
+            int milliSecondDelay = (int) 0.25 * 1000;
+            Task.Delay(milliSecondDelay).ContinueWith(t => OnSingleProcessingDelay());
+            return true;
+        }
+
+        private void OnSingleProcessingDelay()
+        {
+            EventHandler handler = CanAcceptNextCustomScan;
+            if (handler != null)
+            {
+                handler(this, null);
+            }
+        }
+
+        public bool SetRepetitionScan(IRepeatingScan scan)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    internal class MyParameterDescription : IParameterDescription
+    {
+        public MyParameterDescription(string _name, string _selection, string _defaultValue, string _help)
+        {
+            Name = _name;
+            Selection = _selection;
+            DefaultValue = _defaultValue;
+            Help = _help;
+        }
+
+        public string Name { get; }
+
+        public string Selection { get; }
+
+        public string DefaultValue { get; }
+
+        public string Help { get; }
+    }
+
+    class MyCustomScan : ICustomScan
+    {
+        public double SingleProcessingDelay { get; set; } = 0;
+
+        public IDictionary<string, string> Values { get; } = new Dictionary<string, string>();
+
+        public long RunningNumber { get; set; } = 1;
+    }
+
+    class ScanContainer : IFusionMsScanContainer
     {
         private SimpleSpectrum[] spectra;
         private IMsScan lastScan;
 
-        public MsScanContainer(IEnumerable<SimpleSpectrum> spectra)
+        public ScanContainer(IEnumerable<SimpleSpectrum> spectra)
         {
             this.spectra = spectra.ToArray();
             for (int i = 0; i < this.spectra.Length; i++)
@@ -190,7 +406,7 @@ namespace FusionConnector
                 this.CentroidCount = scan.Mzs.Length;
                 foreach (Peak p in scan.Peaks)
                 {
-                    ICentroid centroid = new Centroid(p);
+                    ICentroid centroid = new MyCentroid(p);
                     myList.Add(centroid);
                 }
                 this.Centroids = myList;
@@ -231,9 +447,9 @@ namespace FusionConnector
 
     }
 
-    class Centroid : ICentroid
+    class MyCentroid : ICentroid
     {
-        public Centroid(Peak p)
+        public MyCentroid(Peak p)
         {
             this.Mz = p.Mz;
             this.Intensity = p.Intensity;

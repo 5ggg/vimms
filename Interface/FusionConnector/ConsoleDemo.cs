@@ -8,8 +8,14 @@ namespace FusionConnector
     {
         private static void Main(string[] args)
         {
+            // set to null to connect to the real machine
+            string debugMzML = "C:\\Users\\joewa\\University of Glasgow\\Vinny Davies - CLDS Metabolomics Project\\" +
+                "Data\\multibeers_urine_data\\beers\\fragmentation\\mzML\\Beer_multibeers_1_T10_POS.mzML";
+
             // create a new Fusion bridge
-            FusionBridge fusionBridge = new FusionBridge();
+            FusionBridge fusionBridge = new FusionBridge(debugMzML);
+
+            // set event handler when this main process exits
             AppDomain.CurrentDomain.ProcessExit += (sender, EventArgs) =>
             {
                 fusionBridge.CloseDown();
@@ -42,7 +48,7 @@ namespace FusionConnector
                 }
             };
 
-            // set all the event handlers
+            // set all the event handlers to fusion bridge
             fusionBridge.SetEventHandlers(userScanHandler, userStateChangeHandler, userCreateCustomScanHandler);
 
             // send the initial custom scan
