@@ -7,7 +7,7 @@
     <ProjectGuid>{D84E959B-483B-470B-87CB-C60CF880447D}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <RootNamespace>FusionConnector</RootNamespace>
-    <AssemblyName>FusionConnector</AssemblyName>
+    <AssemblyName>FusionExampleConsole</AssemblyName>
     <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
