@@ -181,6 +181,7 @@ class IndependentMassSpectrometer(LoggerMixin):
     ACQUISITION_STREAM_CLOSING = 'AcquisitionStreamClosing'
     CAN_ACCEPT_NEXT_CUSTOM_SCAN = 'CanAcceptNextCustomScan'
     POSSIBLE_PARAMETERS_CHANGED = 'PossibleParametersChanged'
+    STATE_CHANGED = 'StateChanged'
 
     def __init__(self, ionisation_mode, chemicals, peak_sampler, add_noise=False):
         """
@@ -577,8 +578,8 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             sys.path.append(ref_dir)
 
         # make sure IAPI assemblies can be found
-        assert clr.FindAssembly('IAPI_Assembly') is not None
-        ref = clr.AddReference('IAPI_Assembly')
+        assert clr.FindAssembly('FusionConnector') is not None
+        ref = clr.AddReference('FusionConnector')
         self.logger.debug('AddReference: %s' % ref)
 
         short = list(ListAssemblies(False))
@@ -595,43 +596,18 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         self.start_time = time.time()
 
         # if filename is provided, then we create a Fusion Container that loads test mzML data
+        # otherwise we connect to the actual instrument
+        self.logger.debug('FusionBridge initialising')
+        from FusionConnector import FusionBridge
         if self.filename is not None:
-            # initialise fake FusionContainer that reads data from mzML file
-            from IAPI_Assembly import FusionContainer
-            fusionContainer = FusionContainer(self.filename)
+            # initialise fake FusionBridge that reads data from mzML file
+            fusion_bridge = FusionBridge(self.filename)
 
         else: # TODO: untested codes to connect to the Fusion
-            clr.AddReference('Thermo.TNG.Factory')
-            from Thermo.Interfaces.FusionAccess_V1 import IFusionInstrumentAccessContainer
-            from Thermo.TNG.Factory import Factory
-            cs = Factory[IFusionInstrumentAccessContainer]
-            fusionContainer = cs.Create([IFusionInstrumentAccessContainer])
+            fusion_bridge = FusionBridge()
 
-        # start fusion container
-        self.logger.info('FusionContainer going online')
-        fusionContainer.StartOnlineAccess()
-        while not fusionContainer.ServiceConnected:
-            time.sleep(0.1)
-        self.logger.info('FusionContainer is connected!!')
-
-        # get fusion scan container (assume it's the first)
-        fusionAccess = fusionContainer.Get(1)
-        self.fusionScanContainer = fusionAccess.GetMsScanContainer(0)
-
-        # register scan event handler
-        self.fusionScanContainer.MsScanArrived += self.step
-
-        # get scan control interface
-        self.logger.info('Getting scan control interface')
-        try:
-            self.fusionScanControl = fusionAccess.Control.GetScans(False)
-            if self.fusionScanControl is not None:
-                self.logger.info('Obtained scan control interface')
-                self.fusionScanControl.CanAcceptNextCustomScan += self.handleCanAcceptNextCustomScan
-                self.fusionScanControl.PossibleParametersChanged += self.handlePossibleParametersChanged
-                self._try_send_custom_scan()
-        except Exception as e:
-            self.logger.info('Unable to obtain scan control interface: %s' % e)
+        self.logger.debug('Attaching event handlers')
+        fusion_bridge.SetEventHandlers(self.step, self.handle_state_changed(), self.handle_can_accept_next_custom_scan())
 
     def step(self, sender, args):
         # convert IAPI scan object to Vimms scan object
@@ -652,13 +628,17 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         self.fire_event(self.MS_SCAN_ARRIVED, vimms_scan)
         self.idx += 1
 
-    def handleCanAcceptNextCustomScan(self, sender, args):
+    def handle_can_accept_next_custom_scan(self, sender, args):
         self.logger.debug('handleCanAcceptNextCustomScan called')
         self.fire_event(self.CAN_ACCEPT_NEXT_CUSTOM_SCAN, args)
 
-    def handlePossibleParametersChanged(self, sender, args):
+    def handle_possible_parameters_changed(self, sender, args):
         self.logger.debug('handlePossibleParametersChanged called')
         self.fire_event(self.POSSIBLE_PARAMETERS_CHANGED, args)
+
+    def handle_state_changed(self, sender, args):
+        self.logger.debug('handleStateChanged called')
+        self.fire_event(self.STATE_CHANGED, args)
 
     def fire_event(self, event_name, arg=None):
         if event_name not in self.event_dict:
