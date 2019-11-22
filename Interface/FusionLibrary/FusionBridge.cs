@@ -11,7 +11,7 @@ using Thermo.Interfaces.InstrumentAccess_V1.Control.Scans;
 using Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer;
 using Thermo.TNG.Factory;
 
-namespace FusionConnector
+namespace FusionLibrary
 {
     public class FusionBridge
     {

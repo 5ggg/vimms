@@ -1,8 +1,8 @@
 ﻿using System;
+using FusionLibrary;
 using Thermo.Interfaces.InstrumentAccess_V1.Control.Acquisition;
 using Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer;
-
-namespace FusionConnector
+namespace FusionExampleConsole
 {
     internal class ConsoleDemo
     {

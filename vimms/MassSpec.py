@@ -578,8 +578,8 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             sys.path.append(ref_dir)
 
         # make sure IAPI assemblies can be found
-        assert clr.FindAssembly('FusionConnector') is not None
-        ref = clr.AddReference('FusionConnector')
+        assert clr.FindAssembly('FusionLibrary') is not None
+        ref = clr.AddReference('FusionLibrary')
         self.logger.debug('AddReference: %s' % ref)
 
         short = list(ListAssemblies(False))
@@ -598,7 +598,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         # if filename is provided, then we create a Fusion Container that loads test mzML data
         # otherwise we connect to the actual instrument
         self.logger.debug('FusionBridge initialising')
-        from FusionConnector import FusionBridge
+        from FusionLibrary import FusionBridge
         if self.filename is not None:
             # initialise fake FusionBridge that reads data from mzML file
             fusion_bridge = FusionBridge(self.filename)
@@ -607,7 +607,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             fusion_bridge = FusionBridge()
 
         self.logger.debug('Attaching event handlers')
-        fusion_bridge.SetEventHandlers(self.step, self.handle_state_changed(), self.handle_can_accept_next_custom_scan())
+        fusion_bridge.SetEventHandlers(self.step, self.handle_state_changed, self.handle_can_accept_next_custom_scan)
 
     def step(self, sender, args):
         # convert IAPI scan object to Vimms scan object

@@ -20,7 +20,7 @@ using Thermo.Interfaces.InstrumentAccess_V1.Control.Scans;
 using Thermo.Interfaces.InstrumentAccess_V1.Control.Acquisition.Modes;
 using Thermo.Interfaces.InstrumentAccess_V1.Control.Acquisition.Workflow;
 
-namespace FusionConnector
+namespace FusionLibrary
 {
     public class MzMLFusionContainer : IFusionInstrumentAccessContainer
     {
