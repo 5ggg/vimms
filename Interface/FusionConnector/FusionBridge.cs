@@ -103,6 +103,13 @@ namespace FusionConnector
             }
         }
 
+        public void RemoveEventHandlers()
+        {
+            ScanContainer.MsScanArrived -= ScanArriveHandler;
+            InstrumentControl.Acquisition.StateChanged -= StateChangedHandler;
+            ScanControl.CanAcceptNextCustomScan -= CreateCustomScanHandlerHandler;
+        }
+
         private void ScanArriveHandler(object sender, MsScanEventArgs e)
         {
             IMsScan scan = e.GetScan();
@@ -239,6 +246,9 @@ namespace FusionConnector
 
         public void CloseDown()
         {
+            WriteLog("Removing event handlers", true);
+            RemoveEventHandlers();
+
             WriteLog("Goodbye Cruel World", true);
 
             // write log files to Desktop
