@@ -22,13 +22,13 @@ namespace FusionExampleConsole
             };
 
             // create scan arrive user event handler
-            EventHandler<MsScanEventArgs> userScanHandler = (object sender, MsScanEventArgs e) =>
+            FusionBridge.UserScanArriveDelegate userScanHandler = (IMsScan scan) =>
             {
                 fusionBridge.WriteLog("userScanHandler is called");
             };
 
             // create user state changed event handler
-            EventHandler<StateChangedEventArgs> userStateChangeHandler = (object sender, StateChangedEventArgs e) =>
+            FusionBridge.UserStateChangedDelegate userStateChangeHandler = (IState state) =>
             {
                 fusionBridge.WriteLog("userStateChangeHandler is called");
             };
@@ -39,7 +39,7 @@ namespace FusionExampleConsole
             double isolationWidth = 0.7;
             double collisionEnergy = 35;
             double precursorMass = startMz;
-            EventHandler userCreateCustomScanHandler = (object sender, EventArgs e) =>
+            FusionBridge.UserCreateCustomScanDelegate userCreateCustomScanHandler = () =>
             {
                 if (precursorMass < endMz)
                 {

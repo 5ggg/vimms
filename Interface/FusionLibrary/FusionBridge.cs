@@ -15,6 +15,11 @@ namespace FusionLibrary
 {
     public class FusionBridge
     {
+        // create some delegate types
+        public delegate void UserScanArriveDelegate(IMsScan scan);
+        public delegate void UserStateChangedDelegate(IState state);
+        public delegate void UserCreateCustomScanDelegate();
+
         private List<string> Logs { get; set; }
         private IFusionInstrumentAccess InstrumentAccess { get; set; }
         private IFusionMsScanContainer ScanContainer { get; set; }
@@ -22,9 +27,10 @@ namespace FusionLibrary
         public IScans ScanControl { get; set; }
         private long runningNumber = 100000;    // start with an offset to make sure it's "us"
 
-        private EventHandler<MsScanEventArgs> UserScanArriveHandler { get; set; }
-        private EventHandler<StateChangedEventArgs> UserStateChangedHandler { get; set; }
-        private EventHandler UserCreateCustomScanHandler { get; set; }
+        // store the user-passed callback here as delegates
+        private UserScanArriveDelegate scanHandler;
+        private UserStateChangedDelegate stateHandler;
+        private UserCreateCustomScanDelegate customScanHandler;
 
         public FusionBridge(string debugMzML = null)
         {
@@ -81,24 +87,24 @@ namespace FusionLibrary
 
         }
 
-        public void SetEventHandlers(EventHandler<MsScanEventArgs> userScanArriveHandler, EventHandler<StateChangedEventArgs> userStateChangeHandler,
-            EventHandler userCreateCustomScanHandler)
+        public void SetEventHandlers(UserScanArriveDelegate scanArriveDelegate, 
+            UserStateChangedDelegate stateChangedDelegate, UserCreateCustomScanDelegate customScanDelegate)
         {
             // if not null, save user-provided event handlers and attach the appropriate event handlers
 
-            if (userScanArriveHandler != null)
+            if (scanArriveDelegate != null)
             {
-                UserScanArriveHandler = userScanArriveHandler;
+                scanHandler = scanArriveDelegate;
                 ScanContainer.MsScanArrived += ScanArriveHandler;
             }
-            if (userStateChangeHandler != null)
+            if (stateChangedDelegate != null)
             {
-                UserStateChangedHandler = userStateChangeHandler;
+                stateHandler = stateChangedDelegate;
                 InstrumentControl.Acquisition.StateChanged += StateChangedHandler;
             }
-            if (userCreateCustomScanHandler != null)
+            if (customScanDelegate != null)
             {
-                UserCreateCustomScanHandler = userCreateCustomScanHandler;
+                customScanHandler = customScanDelegate;
                 ScanControl.CanAcceptNextCustomScan += CreateCustomScanHandlerHandler;
             }
         }
@@ -126,7 +132,7 @@ namespace FusionLibrary
             }
 
             // run user scan event handler
-            UserScanArriveHandler(sender, e);
+            scanHandler(scan);
         }
 
         private void StateChangedHandler(object sender, StateChangedEventArgs e)
@@ -137,13 +143,13 @@ namespace FusionLibrary
             WriteLog(msg, true);
 
             // run user state changed handler
-            UserStateChangedHandler(sender, e);
+            stateHandler(state);
         }
 
         private void CreateCustomScanHandlerHandler(object sender, EventArgs e)
         {
             WriteLog("UserCreateCustomScan starts", true);
-            UserCreateCustomScanHandler(sender, e);
+            customScanHandler();
             WriteLog("UserCreateCustomScan ends", true);
         }
 
