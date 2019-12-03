@@ -194,21 +194,27 @@ namespace FusionLibrary
                 if (msLevel == 1)
                 {
                     cs.Values["ScanType"] = "Full";
-                    cs.Values["IsolationWidth"] = "0.7"; // default
-                    cs.Values["PrecursorMass"] = ""; // default
+                    cs.Values["IsolationWidth"] = "0.7";
+                    cs.Values["PrecursorMass"] = "";
+                    cs.Values["OrbitrapResolution"] = "120000";
                 }
                 else
                 {
                     cs.Values["ScanType"] = "MSn";
                     cs.Values["IsolationWidth"] = isolationWidth.ToString();
                     cs.Values["PrecursorMass"] = precursorMass.ToString();
+                    cs.Values["OrbitrapResolution"] = "7500";
                 }
+                cs.Values["ActivationType"] = "HCD";
                 cs.Values["DataType"] = "Centroid";
+                cs.Values["AGCTarget"] = "30000";
+                cs.Values["MaxIT"] = "100";
+                cs.Values["Microscans"] = "3";
 
                 // Dump key-value pairs in cs.Values
                 foreach (KeyValuePair<string, string> kvp in cs.Values)
                 {
-                    string msg = string.Format("cs.Values Key = {0}, Value = {1}", kvp.Key, kvp.Value);
+                    string msg = string.Format("- cs.Values Key = {0}, Value = {1}", kvp.Key, kvp.Value);
                     WriteLog(msg);
                 }
 
