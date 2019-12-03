@@ -253,7 +253,7 @@ namespace FusionLibrary
 
             // write log files to Desktop
             string docPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-            string fileName = "FusionBridge_" + DateTime.Now.ToFileTime() + ".txt";
+            string fileName = "FusionBridge_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
             using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, fileName)))
             {
                 foreach (string line in Logs)
