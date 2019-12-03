@@ -61,6 +61,12 @@ class Controller(LoggerMixin):
     def update_state_after_scan(self, last_scan):
         raise NotImplementedError()
 
+    def create_custom_scan(self):
+        raise NotImplementedError()
+
+    def handle_state_changed(self, state):
+        raise NotImplementedError
+
     def reset(self):
         raise NotImplementedError()
 
@@ -102,6 +108,12 @@ class IdleController(Controller):
     def update_state_after_scan(self, last_scan):
         pass
 
+    def create_custom_scan(self):
+        pass
+
+    def handle_state_changed(self, state):
+        pass
+
     def reset(self):
         pass
 
@@ -127,6 +139,12 @@ class SimpleMs1Controller(Controller):
         return new_tasks
 
     def update_state_after_scan(self, last_scan):
+        pass
+
+    def create_custom_scan(self):
+        pass
+
+    def handle_state_changed(self, state):
         pass
 
     def reset(self):
@@ -205,6 +223,12 @@ class TopNController(Controller):
         # the DEW list update must be done after time has been increased
         self._add_precursor_info(last_scan.param, last_scan)
         self._manage_dynamic_exclusion_list(last_scan.param, last_scan)
+
+    def create_custom_scan(self):
+        pass
+
+    def handle_state_changed(self, state):
+        pass
 
     def reset(self):
         self.exclusion_list = []
@@ -401,6 +425,12 @@ class HybridController(TopNController):
     def update_state_after_scan(self, last_scan):
         super().update_state_after_scan(last_scan)
 
+    def create_custom_scan(self):
+        pass
+
+    def handle_state_changed(self, state):
+        pass
+
     def reset(self):
         super().reset()
 
@@ -485,6 +515,12 @@ class RoiController(TopNController):
         # add precursor info based on the current scan produced
         # NOT doing the dynamic exclusion window thing
         self._add_precursor_info(last_scan.param, last_scan)
+
+    def create_custom_scan(self):
+        pass
+
+    def handle_state_changed(self, state):
+        pass
 
     def reset(self):
         super().reset()

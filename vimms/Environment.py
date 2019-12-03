@@ -49,6 +49,10 @@ class Environment(LoggerMixin):
                                 self.controller.handle_acquisition_open)
         self.mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING,
                                 self.controller.handle_acquisition_closing)
+        self.mass_spec.register(IndependentMassSpectrometer.CAN_ACCEPT_NEXT_CUSTOM_SCAN,
+                                self.controller.create_custom_scan)
+        self.mass_spec.register(IndependentMassSpectrometer.STATE_CHANGED,
+                                self.controller.handle_state_changed)
 
         # run mass spec
         with tqdm(total=self.max_time - self.min_time, initial=0) as pbar:
@@ -179,10 +183,10 @@ class IAPIEnvironment(Environment):
 
         # register event handlers from the controller
         self.mass_spec.register(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.controller.handle_scan)
-        self.mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING,
-                                self.controller.handle_acquisition_open)
-        self.mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING,
-                                self.controller.handle_acquisition_closing)
+        self.mass_spec.register(IndependentMassSpectrometer.CAN_ACCEPT_NEXT_CUSTOM_SCAN,
+                                self.controller.create_custom_scan)
+        self.mass_spec.register(IndependentMassSpectrometer.STATE_CHANGED,
+                                self.controller.handle_state_changed)
 
         self.last_time = time.time()
         self.stop_time = self.last_time + self.max_time

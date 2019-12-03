@@ -180,7 +180,6 @@ class IndependentMassSpectrometer(LoggerMixin):
     ACQUISITION_STREAM_OPENING = 'AcquisitionStreamOpening'
     ACQUISITION_STREAM_CLOSING = 'AcquisitionStreamClosing'
     CAN_ACCEPT_NEXT_CUSTOM_SCAN = 'CanAcceptNextCustomScan'
-    POSSIBLE_PARAMETERS_CHANGED = 'PossibleParametersChanged'
     STATE_CHANGED = 'StateChanged'
 
     def __init__(self, ionisation_mode, chemicals, peak_sampler, add_noise=False):
@@ -202,11 +201,14 @@ class IndependentMassSpectrometer(LoggerMixin):
         self.environment = None
 
         # the events here follows IAPI events
-        self.events = Events((self.MS_SCAN_ARRIVED, self.ACQUISITION_STREAM_OPENING, self.ACQUISITION_STREAM_CLOSING,))
+        self.events = Events((self.MS_SCAN_ARRIVED, self.ACQUISITION_STREAM_OPENING, self.ACQUISITION_STREAM_CLOSING,
+                              self.CAN_ACCEPT_NEXT_CUSTOM_SCAN, self.STATE_CHANGED,))
         self.event_dict = {
             self.MS_SCAN_ARRIVED: self.events.MsScanArrived,
             self.ACQUISITION_STREAM_OPENING: self.events.AcquisitionStreamOpening,
-            self.ACQUISITION_STREAM_CLOSING: self.events.AcquisitionStreamClosing
+            self.ACQUISITION_STREAM_CLOSING: self.events.AcquisitionStreamClosing,
+            self.CAN_ACCEPT_NEXT_CUSTOM_SCAN: self.events.CanAcceptNextCustomScan,
+            self.STATE_CHANGED: self.events.StateChanged
         }
 
         # the list of all chemicals in the dataset
@@ -587,6 +589,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         assert 'Fusion.API-1.0' in short
         assert 'API-2.0' in short
         assert 'Spectrum-1.0' in short
+        assert 'FusionLibrary' in short
         self.filename = filename
 
         self.fusionScanContainer = None
@@ -601,18 +604,19 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         from FusionLibrary import FusionBridge
         if self.filename is not None:
             # initialise fake FusionBridge that reads data from mzML file
-            fusion_bridge = FusionBridge(self.filename)
+            self.fusion_bridge = FusionBridge(self.filename)
 
         else: # TODO: untested codes to connect to the Fusion
-            fusion_bridge = FusionBridge()
+            self.fusion_bridge = FusionBridge()
 
         self.logger.debug('Attaching event handlers')
-        fusion_bridge.SetEventHandlers(self.step, self.handle_state_changed, self.handle_can_accept_next_custom_scan)
+        scan_handler_delegate = FusionBridge.UserScanArriveDelegate(self.step)
+        state_changed_delegate = FusionBridge.UserStateChangedDelegate(self.handle_state_changed)
+        custom_scan_delegate = FusionBridge.UserCreateCustomScanDelegate(self.handle_can_accept_next_custom_scan)
+        self.fusion_bridge.SetEventHandlers(scan_handler_delegate, state_changed_delegate, custom_scan_delegate)
 
-    def step(self, sender, args):
+    def step(self, iapi_scan):
         # convert IAPI scan object to Vimms scan object
-        iapi_scan = args.GetScan()
-
         scan_id = self.idx
         self.time = time.time()
         scan_time = self.time - self.start_time  # TODO: not correct? This should be the scan start time from the mass spec
@@ -632,10 +636,6 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         self.logger.debug('handleCanAcceptNextCustomScan called')
         self.fire_event(self.CAN_ACCEPT_NEXT_CUSTOM_SCAN, args)
 
-    def handle_possible_parameters_changed(self, sender, args):
-        self.logger.debug('handlePossibleParametersChanged called')
-        self.fire_event(self.POSSIBLE_PARAMETERS_CHANGED, args)
-
     def handle_state_changed(self, sender, args):
         self.logger.debug('handleStateChanged called')
         self.fire_event(self.STATE_CHANGED, args)
@@ -647,7 +647,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         if event_name == self.MS_SCAN_ARRIVED:  # add new scan to spectra send channel
             scan = arg
             self.environment.add_scan(scan)
-        elif event_name == self.CAN_ACCEPT_NEXT_CUSTOM_SCAN or event_name == self.POSSIBLE_PARAMETERS_CHANGED:
+        elif event_name == self.CAN_ACCEPT_NEXT_CUSTOM_SCAN:
             self._try_send_custom_scan()
         else:
             # pretend to fire the event
