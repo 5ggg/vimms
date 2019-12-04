@@ -44,15 +44,15 @@ class Environment(LoggerMixin):
         self._set_initial_values()
 
         # register event handlers from the controller
-        self.mass_spec.register(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.controller.handle_scan)
-        self.mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING,
-                                self.controller.handle_acquisition_open)
-        self.mass_spec.register(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING,
-                                self.controller.handle_acquisition_closing)
-        self.mass_spec.register(IndependentMassSpectrometer.CAN_ACCEPT_NEXT_CUSTOM_SCAN,
-                                self.controller.create_custom_scan)
-        self.mass_spec.register(IndependentMassSpectrometer.STATE_CHANGED,
-                                self.controller.handle_state_changed)
+        self.mass_spec.register_event(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.controller.handle_scan)
+        self.mass_spec.register_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING,
+                                      self.controller.handle_acquisition_open)
+        self.mass_spec.register_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING,
+                                      self.controller.handle_acquisition_closing)
+        self.mass_spec.register_event(IndependentMassSpectrometer.CAN_ACCEPT_NEXT_CUSTOM_SCAN,
+                                      self.controller.create_custom_scan)
+        self.mass_spec.register_event(IndependentMassSpectrometer.STATE_CHANGED,
+                                      self.controller.handle_state_changed)
 
         # run mass spec
         with tqdm(total=self.max_time - self.min_time, initial=0) as pbar:
@@ -68,7 +68,7 @@ class Environment(LoggerMixin):
                     # increment progress bar
                     self._update_progress_bar(bar, scan)
             finally:
-                self.mass_spec.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING)
+                self.mass_spec.close()
                 if bar is not None:
                     bar.close()
 
@@ -182,11 +182,11 @@ class IAPIEnvironment(Environment):
         self._set_initial_values()
 
         # register event handlers from the controller
-        self.mass_spec.register(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.controller.handle_scan)
-        self.mass_spec.register(IndependentMassSpectrometer.CAN_ACCEPT_NEXT_CUSTOM_SCAN,
-                                self.controller.create_custom_scan)
-        self.mass_spec.register(IndependentMassSpectrometer.STATE_CHANGED,
-                                self.controller.handle_state_changed)
+        self.mass_spec.register_event(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.controller.handle_scan)
+        self.mass_spec.register_event(IndependentMassSpectrometer.CAN_ACCEPT_NEXT_CUSTOM_SCAN,
+                                      self.controller.create_custom_scan)
+        self.mass_spec.register_event(IndependentMassSpectrometer.STATE_CHANGED,
+                                      self.controller.handle_state_changed)
 
         self.last_time = time.time()
         self.stop_time = self.last_time + self.max_time
@@ -196,9 +196,7 @@ class IAPIEnvironment(Environment):
     def add_scan(self, scan):
         # stop event handling if stop_time has been reached
         if time.time() > self.stop_time:
-            self.logger.debug('Unregistering MsScanArrived event handler')
-            self.mass_spec.fusionScanContainer.MsScanArrived -= self.mass_spec.step
-            self.mass_spec.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING)
+            self.mass_spec.close()
         else:
             # handle the scan immediately by passing it to the controller
             self.scan_channel.append(scan)

@@ -1,3 +1,4 @@
+import atexit
 import math
 import sys
 import time
@@ -289,8 +290,7 @@ class IndependentMassSpectrometer(LoggerMixin):
         Resets the mass spec state so we can reuse it again
         :return: None
         """
-        for key in self.event_dict:  # clear event handlers
-            self.clear(key)
+        self.clear_events()
         self.time = 0
         self.idx = 0
         self.processing_queue = []
@@ -320,7 +320,7 @@ class IndependentMassSpectrometer(LoggerMixin):
             else:
                 e()
 
-    def register(self, event_name, handler):
+    def register_event(self, event_name, handler):
         """
         Register event handler
         :param event_name: the event name
@@ -332,7 +332,11 @@ class IndependentMassSpectrometer(LoggerMixin):
         e = self.event_dict[event_name]
         e += handler  # register a new event handler for e
 
-    def clear(self, event_name):
+    def clear_events(self):
+        for key in self.event_dict:  # clear event handlers
+            self.clear_event(key)
+
+    def clear_event(self, event_name):
         """
         Clears event handler for a given event name
         :param event_name: the event name
@@ -342,6 +346,12 @@ class IndependentMassSpectrometer(LoggerMixin):
             raise ValueError('Unknown event name')
         e = self.event_dict[event_name]
         e.targets = []
+
+    def close(self):
+        self.logger.debug('Acquisition stream is closing!')
+        self.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING)
+        self.logger.debug('Unregistering event handlers')
+        self.clear_events()
 
     ####################################################################################################################
     # Private methods
@@ -591,9 +601,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         assert 'Spectrum-1.0' in short
         assert 'FusionLibrary' in short
         self.filename = filename
-
-        self.fusionScanContainer = None
-        self.fusionScanControl = None
+        self.fusion_bridge = None
 
     def run(self):
         self.start_time = time.time()
@@ -606,10 +614,11 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             # initialise fake FusionBridge that reads data from mzML file
             self.fusion_bridge = FusionBridge(self.filename)
 
-        else: # TODO: untested codes to connect to the Fusion
+        else:  # TODO: untested codes to connect to the Fusion
             self.fusion_bridge = FusionBridge()
 
         self.logger.debug('Attaching event handlers')
+        atexit.register(self.fusion_bridge.CloseDown)  # called when the current process exits
         scan_handler_delegate = FusionBridge.UserScanArriveDelegate(self.step)
         state_changed_delegate = FusionBridge.UserStateChangedDelegate(self.handle_state_changed)
         custom_scan_delegate = FusionBridge.UserCreateCustomScanDelegate(self.handle_can_accept_next_custom_scan)
@@ -669,5 +678,11 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
                 self.logger.debug('Got a None custom scan')
 
     def reset(self):
-        # TODO: need to implement later
-        pass
+        super().reset()
+        self.fusion_bridge = None
+
+    def close(self):
+        super().close()
+        self.logger.debug('Closing fusion bridge')
+        self.fusion_bridge.CloseDown()
+        self.fusion_bridge = None
