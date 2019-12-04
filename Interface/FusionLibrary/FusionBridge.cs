@@ -258,19 +258,23 @@ namespace FusionLibrary
 
         public void CloseDown()
         {
-            WriteLog("Removing event handlers", true);
-            RemoveEventHandlers();
-
-            WriteLog("Goodbye Cruel World", true);
-
-            // write log files to Desktop
-            string docPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-            string fileName = "FusionBridge_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
-            using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, fileName)))
+            if (Logs.Count > 0)
             {
-                foreach (string line in Logs)
+                WriteLog("Removing event handlers", true);
+                RemoveEventHandlers();
+
+                WriteLog("Goodbye Cruel World", true);
+
+                // write log files to Desktop
+                string docPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                string fileName = "FusionBridge_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
+                using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, fileName)))
                 {
-                    outputFile.WriteLine(line);
+                    foreach (string line in Logs)
+                    {
+                        outputFile.WriteLine(line);
+                    }
+                    Logs.Clear();
                 }
             }
         }
