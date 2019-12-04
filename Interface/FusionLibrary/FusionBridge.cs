@@ -121,14 +121,20 @@ namespace FusionLibrary
             IMsScan scan = e.GetScan();
             if (scan == null)
             {
-                WriteLog(string.Format("[{0:HH:mm:ss.ffff}] Empty scan", DateTime.Now), true);
+                WriteLog("Empty scan", true);
             }
             else
             {
-                WriteLog(string.Format("[{0:HH:mm:ss.ffff}] Received MS Scan Number {1} -- {2} peaks",
-                DateTime.Now,
+                WriteLog(string.Format("Received MS Scan Number {0} -- {1} peaks",
                 scan.Header["Scan"],
                 scan.CentroidCount), true);
+
+                // dump header
+                foreach (KeyValuePair<string, string> kvp in scan.Header)
+                {
+                    string msg = string.Format("- Header Key = {0}, Value = {1}", kvp.Key, kvp.Value);
+                    WriteLog(msg);
+                }
             }
 
             // run user scan event handler
