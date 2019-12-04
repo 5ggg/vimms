@@ -221,8 +221,8 @@ class TopNController(Controller):
     def update_state_after_scan(self, last_scan):
         # add precursor and DEW information based on the current scan produced
         # the DEW list update must be done after time has been increased
-        self._add_precursor_info(last_scan.param, last_scan)
-        self._manage_dynamic_exclusion_list(last_scan.param, last_scan)
+        self._add_precursor_info(last_scan)
+        self._manage_dynamic_exclusion_list(last_scan)
 
     def create_custom_scan(self):
         pass
@@ -255,7 +255,7 @@ class TopNController(Controller):
         dda_scan_params.set(ScanParameters.DYNAMIC_EXCLUSION_RT_TOL, rt_tol)
         return dda_scan_params
 
-    def _add_precursor_info(self, param, scan):
+    def _add_precursor_info(self, scan):
         """
             Adds precursor ion information.
             If MS2 and above, and controller tells us which precursor ion the scan is coming from, store it
@@ -263,9 +263,9 @@ class TopNController(Controller):
         :param scan: the newly generated scan
         :return: None
         """
-        precursor = param.get(ScanParameters.PRECURSOR)
+        precursor = scan.precursor_mz
         if scan.ms_level >= 2 and precursor is not None:
-            isolation_windows = param.get(ScanParameters.ISOLATION_WINDOWS)
+            isolation_windows = scan.isolation_windows
             iso_min = isolation_windows[0][0][0]
             iso_max = isolation_windows[0][0][1]
             self.logger.debug('Time {:.6f} Isolated precursor ion {:.4f} at ({:.4f}, {:.4f})'.format(scan.rt,
@@ -274,7 +274,7 @@ class TopNController(Controller):
                                                                                                      iso_max))
             self.precursor_information[precursor].append(scan)
 
-    def _manage_dynamic_exclusion_list(self, param, scan):
+    def _manage_dynamic_exclusion_list(self, scan):
         """
         Manages dynamic exclusion list
         :param param: a scan parameter object
@@ -282,7 +282,7 @@ class TopNController(Controller):
         :return: None
         """
         current_time = scan.rt + scan.scan_duration
-        precursor = param.get(ScanParameters.PRECURSOR)
+        precursor = scan.precursor_mz
         if scan.ms_level >= 2 and precursor is not None:
             # add dynamic exclusion item to the exclusion list to prevent the same precursor ion being fragmented
             # multiple times in the same mz and rt window
@@ -291,8 +291,8 @@ class TopNController(Controller):
             # TODO: we need to add a repeat count too, i.e. how many times we've seen a fragment peak before
             #  it gets excluded (now it's basically 1)
             mz = precursor.precursor_mz
-            mz_tol = param.get(ScanParameters.DYNAMIC_EXCLUSION_MZ_TOL)
-            rt_tol = param.get(ScanParameters.DYNAMIC_EXCLUSION_RT_TOL)
+            mz_tol = scan.dynamic_exclusion_mz_tol
+            rt_tol = scan.dynamic_exclusion_rt_tol
             mz_lower = mz * (1 - mz_tol / 1e6)
             mz_upper = mz * (1 + mz_tol / 1e6)
             rt_lower = current_time
@@ -514,7 +514,7 @@ class RoiController(TopNController):
     def update_state_after_scan(self, last_scan):
         # add precursor info based on the current scan produced
         # NOT doing the dynamic exclusion window thing
-        self._add_precursor_info(last_scan.param, last_scan)
+        self._add_precursor_info(last_scan)
 
     def create_custom_scan(self):
         pass

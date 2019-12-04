@@ -8,7 +8,7 @@ import numpy as np
 from clr import ListAssemblies
 from events import Events
 
-from vimms.Common import LoggerMixin, adduct_transformation
+from vimms.Common import LoggerMixin, adduct_transformation, POSITIVE, NEGATIVE
 
 
 class Peak(object):
@@ -48,8 +48,11 @@ class Scan(object):
     A class to store scan information
     """
 
-    def __init__(self, scan_id, mzs, intensities, ms_level, rt, scan_duration=None, isolation_windows=None,
-                 parent=None, param=None):
+    def __init__(self, scan_id, mzs, intensities, ms_level, rt,
+                 scan_duration=None, isolation_windows=None,
+                 precursor_mz=None, polarity=POSITIVE,
+                 dynamic_exclusion_mz_tol=None, dynamic_exclusion_rt_tol=None, # TODO: these two parameters do not belong here??!
+                 parent=None):
         """
         Creates a scan
         :param scan_id: current scan id
@@ -59,8 +62,11 @@ class Scan(object):
         :param rt: the retention time of this scan
         :param scan_duration: how long this scan takes, if known.
         :param isolation_windows: the window to isolate precursor peak, if known
+        :param precursor_mz: the precursor m/z, if known
+        :param polarity: the polarity of the scan, either POSITIVE or NEGATIVE
+        :param dynamic_exclusion_mz_tol: dynamic exclusion m/z tolerance (should be removed?)
+        :param dynamic_exclusion_rt_tol: dynamic exclusion RT tolerance (should be removed?)
         :param parent: parent precursor peak, if known
-        :param param: scan parameters, if known
         """
         assert len(mzs) == len(intensities)
         self.scan_id = scan_id
@@ -76,8 +82,11 @@ class Scan(object):
 
         self.scan_duration = scan_duration
         self.isolation_windows = isolation_windows
+        self.precursor_mz = precursor_mz
+        self.polarity = polarity
+        self.dynamic_exclusion_mz_tol = dynamic_exclusion_mz_tol
+        self.dynamic_exclusion_rt_tol = dynamic_exclusion_rt_tol
         self.parent = parent
-        self.param = param
 
     def __repr__(self):
         return 'Scan %d num_peaks=%d rt=%.2f ms_level=%d' % (self.scan_id, self.num_peaks, self.rt, self.ms_level)
@@ -437,6 +446,9 @@ class IndependentMassSpectrometer(LoggerMixin):
         scan_intensities = []  # all the intensity values in this scan
         ms_level = param.get(ScanParameters.MS_LEVEL)
         isolation_windows = param.get(ScanParameters.ISOLATION_WINDOWS)
+        precursor_mz = param.get(ScanParameters.PRECURSOR)
+        dynamic_exclusion_mz_tol = param.get(ScanParameters.DYNAMIC_EXCLUSION_MZ_TOL)
+        dynamic_exclusion_rt_tol = param.get(ScanParameters.DYNAMIC_EXCLUSION_RT_TOL)
         scan_id = self.idx
 
         # for all chemicals that come out from the column coupled to the mass spec
@@ -475,7 +487,9 @@ class IndependentMassSpectrometer(LoggerMixin):
         # Note: at this point, the scan duration is not set yet because we don't know what the next scan is going to be
         # We will set it later in the get_next_scan() method after we've notified the controller that this scan is produced.
         return Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
-                    scan_duration=None, isolation_windows=isolation_windows, param=param)
+                    scan_duration=None, isolation_windows=isolation_windows,
+                    precursor_mz=precursor_mz, polarity=self.ionisation_mode,
+                    dynamic_exclusion_mz_tol=dynamic_exclusion_mz_tol, dynamic_exclusion_rt_tol=dynamic_exclusion_rt_tol)
 
     def _get_chem_indices(self, query_rt):
         rtmin_check = self.chrom_min_rts <= query_rt
@@ -626,18 +640,37 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
 
     def step(self, iapi_scan):
         # convert IAPI scan object to Vimms scan object
-        scan_id = self.idx
-        self.time = time.time()
-        scan_time = self.time - self.start_time  # TODO: not correct? This should be the scan start time from the mass spec
+        scan_id = int(iapi_scan.Header['Scan'])
+        scan_time = float(iapi_scan.Header['StartTime'])
         scan_mzs = np.array([c.Mz for c in iapi_scan.Centroids])
         scan_intensities = np.array([c.Intensity for c in iapi_scan.Centroids])
-        ms_level = 1  # TODO: don't know how to extract ms_level from an IAPI scan
+        ms_level = int(iapi_scan.Header['MSOrder'])
+        polarity = POSITIVE if iapi_scan.Header['Polarity'] == '0' else NEGATIVE
 
-        vimms_scan = Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time, scan_duration=None,
-                          isolation_windows=None, param=None)
-        # title = 'idx %d iapi_scan %s %d peaks --> %s' % (
-        #     self.idx, iapi_scan.Header['Scan'], iapi_scan.CentroidCount, vimms_scan)
-        # self.logger.debug(title)
+        precursor_mz = None
+        isolation_windows = None  # specified in Vinny's nested format
+        dynamic_exclusion_mz_tol = None
+        dynamic_exclusion_rt_tol = None
+        parent = None
+
+        # populate ms2 values
+        # TODO: we need to extract this from the IAPI Scan Header or keep track of this internally somehow
+        if ms_level > 1:
+            precursor_mz = None
+            isolation_windows = None # specified in Vinny's nested format
+            dynamic_exclusion_mz_tol = None
+            dynamic_exclusion_rt_tol = None
+            parent = None
+
+        vimms_scan =  Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
+                           scan_duration=None, isolation_windows=isolation_windows,
+                           precursor_mz=None, polarity=POSITIVE,
+                           dynamic_exclusion_mz_tol=None, dynamic_exclusion_rt_tol=None,
+                           parent=None)
+                           # precursor_mz=precursor_mz, polarity=polarity,
+                           # dynamic_exclusion_mz_tol=dynamic_exclusion_mz_tol, dynamic_exclusion_rt_tol=dynamic_exclusion_rt_tol,
+                           # parent=parent)
+
         self.fire_event(self.MS_SCAN_ARRIVED, vimms_scan)
         self.idx += 1
 

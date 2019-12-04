@@ -11,7 +11,7 @@ from vimms.MzmlWriter import MzmlWriter
 
 
 class Environment(LoggerMixin):
-    def __init__(self, mass_spec, controller, min_time, max_time, progress_bar=True):
+    def __init__(self, mass_spec, controller, min_time, max_time, progress_bar=True, out_dir=None, out_file=None):
         """
         Initialises a synchronous environment to run the mass spec and controller
         :param mass_spec: An instance of Mass Spec object
@@ -32,6 +32,8 @@ class Environment(LoggerMixin):
         self.default_scan_params = ScanParameters()
         self.default_scan_params.set(ScanParameters.MS_LEVEL, 1)
         self.default_scan_params.set(ScanParameters.ISOLATION_WINDOWS, [[DEFAULT_MS1_SCAN_WINDOW]])
+        self.out_dir = out_dir
+        self.out_file = out_file
 
     def run(self):
         """
@@ -71,6 +73,8 @@ class Environment(LoggerMixin):
                 self.mass_spec.close()
                 if bar is not None:
                     bar.close()
+                if self.out_dir is not None and self.out_file is not None:
+                    self.write_mzML(self.out_dir, self.out_file)
 
     def _update_progress_bar(self, pbar, scan):
         """
@@ -87,6 +91,7 @@ class Environment(LoggerMixin):
             else:
                 msg = '(%.3fs) ms_level=%d' % (self.mass_spec.time, scan.ms_level)
             pbar.update(scan.scan_duration)
+            print(msg)
             pbar.set_description(msg)
 
     def add_scan(self, scan):
@@ -165,8 +170,8 @@ class Environment(LoggerMixin):
 
 class IAPIEnvironment(Environment):
 
-    def __init__(self, mass_spec, controller, max_time, progress_bar=True):
-        super().__init__(mass_spec, controller, 0, max_time, progress_bar)
+    def __init__(self, mass_spec, controller, max_time, progress_bar=True, out_dir=None, out_file=None):
+        super().__init__(mass_spec, controller, 0, max_time, progress_bar, out_dir, out_file)
         self.stop_time = None
         self.last_time = None
         self.pbar = tqdm(total=max_time, initial=0) if self.progress_bar else None
@@ -197,6 +202,8 @@ class IAPIEnvironment(Environment):
         # stop event handling if stop_time has been reached
         if time.time() > self.stop_time:
             self.mass_spec.close()
+            if self.out_dir is not None and self.out_file is not None:
+                self.write_mzML(self.out_dir, self.out_file)
         else:
             # handle the scan immediately by passing it to the controller
             self.scan_channel.append(scan)

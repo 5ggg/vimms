@@ -399,7 +399,34 @@ namespace FusionLibrary
 
         public MyMsScan(SimpleSpectrum scan)
         {
+            // obtained from checking the dumps of scan header from the actual instrument
+            this.Header["MassAnalyzer"] = "";
+            this.Header["IonizationMode"] = "";
+            this.Header["ScanRate"] = "";
+            this.Header["ScanMode"] = "";
+            this.Header["StartTime"] = scan.ScanStartTime.ToString();
             this.Header["Scan"] = scan.ScanNumber.ToString();
+            this.Header["TIC"] = scan.TotalIonCurrent.ToString();
+            this.Header["BasePeakIntensity"] = "";
+            this.Header["BasePeakMass"] = "";
+            this.Header["CycleNumber"] = "";
+            this.Header["Polarity"] = "0";
+            this.Header["Microscans"] = "";
+            this.Header["InjectTime"] = "";
+            this.Header["ScanData"] = "";
+            this.Header["Segments"] = "";
+            this.Header["Monoisotopic"] = "";
+            this.Header["MasterScan"] = "";
+            this.Header["FirstMass"] = "";
+            this.Header["LastMass"] = "";
+            this.Header["Checksum"] = "";
+            this.Header["MSOrder"] = scan.MsLevel.ToString();
+            this.Header["Average"] = "";
+            this.Header["Dependent"] = "";
+            this.Header["MSX"] = "";
+            this.Header["SourceFragmentaiton"] = ""; // the spelling is correct here, "SourceFragmentaiton"
+            this.Header["SourceFragmentationEnergy"] = "";
+
             List<ICentroid> myList = new List<ICentroid>();
             if (scan.Centroided)
             {
