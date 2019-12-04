@@ -91,7 +91,6 @@ class Environment(LoggerMixin):
             else:
                 msg = '(%.3fs) ms_level=%d' % (self.mass_spec.time, scan.ms_level)
             pbar.update(scan.scan_duration)
-            print(msg)
             pbar.set_description(msg)
 
     def add_scan(self, scan):
