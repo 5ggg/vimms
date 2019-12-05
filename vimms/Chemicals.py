@@ -1,4 +1,3 @@
-import math
 import copy
 import math
 import random
@@ -8,10 +7,11 @@ from pathlib import Path
 import numpy as np
 import scipy
 import scipy.stats
+from loguru import logger
 
 from vimms.ChineseRestaurantProcess import Restricted_Crp
 from vimms.Chromatograms import EmpiricalChromatogram
-from vimms.Common import LoggerMixin, CHEM_DATA, POS_TRANSFORMATIONS, load_obj, save_obj
+from vimms.Common import CHEM_DATA, POS_TRANSFORMATIONS, load_obj, save_obj
 
 GET_MS2_BY_PEAKS = "sample"
 GET_MS2_BY_SPECTRA = "spectra"
@@ -228,7 +228,7 @@ class MSN(Chemical):
         return 'MSN Fragment mz=%.4f ms_level=%d' % (self.isotopes[0][0], self.ms_level)
 
 
-class ChemicalCreator(LoggerMixin):
+class ChemicalCreator(object):
     def __init__(self, peak_sampler, ROI_sources=None, database=None):
         self.peak_sampler = peak_sampler
         self.ROI_sources = ROI_sources
@@ -236,7 +236,7 @@ class ChemicalCreator(LoggerMixin):
 
         # sort database compounds by their mass
         if self.database is not None:
-            self.logger.debug('Sorting database compounds by masses')
+            logger.debug('Sorting database compounds by masses')
             compound_mass_list = [Formula(compound.chemical_formula).mass for compound in self.database]
             sort_index = np.argsort(compound_mass_list)
             self.compound_mass_list = np.array(compound_mass_list)[sort_index].tolist()
@@ -267,9 +267,9 @@ class ChemicalCreator(LoggerMixin):
 
         # sample from kernel densities
         if self.ms_levels > 2:
-            print("Warning ms_level > 3 not implemented properly yet. Uses scaled ms_level = 2 information for now")
+            logger.warning("Warning ms_level > 3 not implemented properly yet. Uses scaled ms_level = 2 information for now")
         n_ms1 = self._get_n(1)
-        self.logger.debug("{} chemicals to be created.".format(n_ms1))
+        logger.debug("{} chemicals to be created.".format(n_ms1))
         sampled_peaks = self.peak_sampler.get_peak(1, n_ms1, self.mz_range[0][0], self.mz_range[0][1],
                                                    self.rt_range[0][0],
                                                    self.rt_range[0][1], self.min_ms1_intensity)
@@ -303,7 +303,7 @@ class ChemicalCreator(LoggerMixin):
             chem.type = CHEM_DATA
             chemicals.append(chem)
             # if i % 100 == 0:
-            #     self.logger.debug("i = {}".format(i))
+            #     logger.debug("i = {}".format(i))
         return chemicals
 
     def _get_n_ROI_files(self):
@@ -322,7 +322,7 @@ class ChemicalCreator(LoggerMixin):
             if len_ROI > file_index:
                 ROI_file = ROI_files[file_index - num_ROI]
                 ROI = load_obj(ROI_file)
-                # self.logger.debug("Loaded {}".format(ROI_file))
+                # logger.debug("Loaded {}".format(ROI_file))
                 if roi_rt_range is not None:
                     ROI = self._filter_ROI(ROI, roi_rt_range)
                 return ROI
@@ -343,7 +343,7 @@ class ChemicalCreator(LoggerMixin):
         formula_set = set()
         for formula_index in range(len(sampled_peaks)):
             if formula_index % 500 == 0:
-                self.logger.debug('Sampling formula %d/%d' % (formula_index, len(sampled_peaks)))
+                logger.debug('Sampling formula %d/%d' % (formula_index, len(sampled_peaks)))
 
             mz_peak_sample = sampled_peaks[formula_index].mz
             idx = np.argsort(abs(self.compound_mass_list - mz_peak_sample))
@@ -474,7 +474,7 @@ class ChemicalCreator(LoggerMixin):
         return True
 
 
-class MultiSampleCreator(LoggerMixin):
+class MultiSampleCreator(object):
 
     def __init__(self, original_dataset, n_samples, classes, intensity_noise_sd,
                  change_probabilities, change_differences_means, change_differences_sds, dropout_probabilities=None,
@@ -502,11 +502,11 @@ class MultiSampleCreator(LoggerMixin):
         if self.experimental_classes is not None:
             self.sample_experimental_statuses = self._get_experimental_statuses()
             self.experimental_effects = self._get_experimental_effects()
-        self.logger.debug("Classes, Statuses and Differences defined.")
+        logger.debug("Classes, Statuses and Differences defined.")
 
         self.samples = []
         for index_sample in range(sum(self.n_samples)):
-            self.logger.debug("Dataset {} of {} created.".format(index_sample + 1, sum(self.n_samples)))
+            logger.debug("Dataset {} of {} created.".format(index_sample + 1, sum(self.n_samples)))
             new_sample = copy.deepcopy(self.original_dataset)
             which_class = np.where(np.array(self.classes) == self.sample_classes[index_sample])
             for index_chemical in range(len(new_sample)):
@@ -538,7 +538,7 @@ class MultiSampleCreator(LoggerMixin):
         while len(missing) != len(chemical_statuses):
             if self.dropout_probabilities is not None:
                 if self.dropout_numbers is not None:
-                    print("using dropout_probabilties rather than dropout_number.")
+                    logger.debug("using dropout_probabilties rather than dropout_number.")
                 new_missing = list(np.where(np.random.binomial(1, self.dropout_probabilities[len(missing)],
                                                                len(self.original_dataset)))[0])
             if self.dropout_probabilities is None and self.dropout_numbers is not None:
@@ -595,7 +595,7 @@ class MultiSampleCreator(LoggerMixin):
     def _get_noisy_intensity(self, adjusted_intensity):
         noisy_intensity = adjusted_intensity + np.random.normal(0, self.intensity_noise_sd[0], 1)
         if noisy_intensity < 0:
-            print("Warning: Negative Intensities have been created")
+            logger.warning("Warning: Negative Intensities have been created")
         return noisy_intensity
 
 

@@ -3,6 +3,7 @@ import xml.etree.ElementTree
 
 import numpy as np
 import pandas as pd
+from loguru import logger
 
 from vimms.Chemicals import UnknownChemical
 from vimms.Common import PROTON_MASS
@@ -16,7 +17,7 @@ def pick_peaks(file_list,
     et = xml.etree.ElementTree.parse(xml_template)
     # Loop over files in the list (just the firts three for now)
     for filename in file_list:
-        print("Creating xml batch file for {}".format(filename.split(os.sep)[-1]))
+        logger.info("Creating xml batch file for {}".format(filename.split(os.sep)[-1]))
         root = et.getroot()
         for child in root:
             # Set the input filename
@@ -38,7 +39,7 @@ def pick_peaks(file_list,
         new_xml_name = os.path.join(output_dir, filename.split(os.sep)[-1].split('.')[0] + '.xml')
         et.write(new_xml_name)
         # Run mzmine
-        print("Running mzMine for {}".format(filename.split(os.sep)[-1]))
+        logger.info("Running mzMine for {}".format(filename.split(os.sep)[-1]))
         os.system(mzmine_command + ' "{}"'.format(new_xml_name))
 
 
@@ -133,7 +134,7 @@ def mzmine_match(chemical_list_1, chemical_list_2, mz_tol, rt_tol, verbose=False
     for i in range(len(chemical_list_1)):
         to_find = chemical_list_1[i]
         if i % 1000 == 0 and verbose:
-            print('%d/%d found %d' % (i, len(chemical_list_1), len(matches)))
+            logger.debug('%d/%d found %d' % (i, len(chemical_list_1), len(matches)))
         match = mzmine_find_chem(to_find, min_rts, max_rts, min_mzs, max_mzs, chem_list)
         if match:
             matches[to_find] = match

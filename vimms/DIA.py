@@ -6,7 +6,7 @@ import copy
 
 from vimms.Controller import *
 from vimms.MassSpec import *
-from vimms.Common import  POSITIVE, DEFAULT_MS1_SCAN_WINDOW, LoggerMixin
+from vimms.Common import  POSITIVE, DEFAULT_MS1_SCAN_WINDOW
 
 
 def DiaRestrictedScanner(dataset, ps, dia_design, window_type, kaufmann_design, extra_bins, num_windows=None, pbar=False):
@@ -199,7 +199,7 @@ class Scan_Results_Calculator(object):
         for unique_mz_index in range(len(unique_mz)):
             if max(abs(unique_intensities[0] - sum(unique_intensities[0]) / len(
                     unique_intensities[0]))) > ms2_intensity_slack:
-                print("not ready yet")
+                logger.warning("not ready yet")
             else:
                 for location_index in range(len(dia_results.locations)):
                     TF_in_location = []

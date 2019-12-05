@@ -5,8 +5,9 @@ from collections import defaultdict
 
 import numpy as np
 import pylab as plt
+from loguru import logger
 
-from vimms.Common import POSITIVE, DEFAULT_MS1_SCAN_WINDOW, LoggerMixin
+from vimms.Common import POSITIVE, DEFAULT_MS1_SCAN_WINDOW
 from vimms.MassSpec import ScanParameters, ExclusionItem
 from vimms.Roi import match, Roi
 
@@ -23,7 +24,7 @@ class Precursor(object):
             self.precursor_mz, self.precursor_intensity, self.precursor_charge, self.precursor_scan_id)
 
 
-class Controller(LoggerMixin):
+class Controller(object):
     def __init__(self):
         self.scans = defaultdict(list)  # key: ms level, value: list of scans for that level
         self.make_plot = False
@@ -40,7 +41,7 @@ class Controller(LoggerMixin):
         raise NotImplementedError()
 
     def handle_scan(self, scan):
-        self.logger.info('Time %f Received %s' % (scan.rt, scan))
+        logger.info('Time %f Received %s' % (scan.rt, scan))
         self.scans[scan.ms_level].append(scan)
 
         # plot scan if there are peaks
@@ -96,10 +97,10 @@ class IdleController(Controller):
         super().__init__()
 
     def handle_acquisition_open(self):
-        self.logger.info('Acquisition open')
+        logger.info('Acquisition open')
 
     def handle_acquisition_closing(self):
-        self.logger.info('Acquisition closing')
+        logger.info('Acquisition closing')
 
     def _process_scan(self, scan):
         new_tasks = []
@@ -127,10 +128,10 @@ class SimpleMs1Controller(Controller):
         super().__init__()
 
     def handle_acquisition_open(self):
-        self.logger.info('Acquisition open')
+        logger.info('Acquisition open')
 
     def handle_acquisition_closing(self):
-        self.logger.info('Acquisition closing')
+        logger.info('Acquisition closing')
 
     def _process_scan(self, scan):
         new_tasks = [
@@ -173,10 +174,10 @@ class TopNController(Controller):
         self.precursor_information = defaultdict(list)  # key: Precursor object, value: ms2 scans
 
     def handle_acquisition_open(self):
-        self.logger.info('Acquisition open')
+        logger.info('Acquisition open')
 
     def handle_acquisition_closing(self):
-        self.logger.info('Acquisition closing')
+        logger.info('Acquisition closing')
 
     def _process_scan(self, scan):
         # if there's a previous ms1 scan to process
@@ -196,11 +197,11 @@ class TopNController(Controller):
 
                 # stopping criteria is after we've fragmented N ions or we found ion < min_intensity
                 if fragmented_count >= self.N:
-                    self.logger.debug('Time %f Top-%d ions have been selected' % (rt, self.N))
+                    logger.debug('Time %f Top-%d ions have been selected' % (rt, self.N))
                     break
 
                 if intensity < self.min_ms1_intensity:
-                    self.logger.debug(
+                    logger.debug(
                         'Time %f Minimum intensity threshold %f reached at %f, %d' % (
                             rt, self.min_ms1_intensity, intensity, fragmented_count))
                     break
@@ -269,10 +270,10 @@ class TopNController(Controller):
             isolation_windows = scan.isolation_windows
             iso_min = isolation_windows[0][0][0]
             iso_max = isolation_windows[0][0][1]
-            self.logger.debug('Time {:.6f} Isolated precursor ion {:.4f} at ({:.4f}, {:.4f})'.format(scan.rt,
-                                                                                                     precursor.precursor_mz,
-                                                                                                     iso_min,
-                                                                                                     iso_max))
+            logger.debug('Time {:.6f} Isolated precursor ion {:.4f} at ({:.4f}, {:.4f})'.format(scan.rt,
+                                                                                                precursor.precursor_mz,
+                                                                                                iso_min,
+                                                                                                iso_max))
             self.precursor_information[precursor].append(scan)
 
     def _manage_dynamic_exclusion_list(self, scan):
@@ -299,7 +300,7 @@ class TopNController(Controller):
             rt_lower = current_time
             rt_upper = current_time + rt_tol
             x = ExclusionItem(from_mz=mz_lower, to_mz=mz_upper, from_rt=rt_lower, to_rt=rt_upper)
-            self.logger.debug('Time {:.6f} Created dynamic exclusion window mz ({}-{}) rt ({}-{})'.format(
+            logger.debug('Time {:.6f} Created dynamic exclusion window mz ({}-{}) rt ({}-{})'.format(
                 current_time,
                 x.from_mz, x.to_mz, x.from_rt, x.to_rt
             ))
@@ -320,7 +321,7 @@ class TopNController(Controller):
             exclude_mz = x.from_mz <= mz <= x.to_mz
             exclude_rt = x.from_rt <= rt <= x.to_rt
             if exclude_mz and exclude_rt:
-                self.logger.debug(
+                logger.debug(
                     'Excluded precursor ion mz {:.4f} rt {:.2f} because of {}'.format(mz, rt, x))
                 return True
         return False
@@ -388,11 +389,11 @@ class HybridController(TopNController):
 
                 # stopping criteria is after we've fragmented N ions or we found ion < min_intensity
                 if fragmented_count >= current_N:
-                    self.logger.debug('Top-%d ions have been selected' % (current_N))
+                    logger.debug('Top-%d ions have been selected' % (current_N))
                     break
 
                 if intensity < self.min_ms1_intensity:
-                    self.logger.debug(
+                    logger.debug(
                         'Minimum intensity threshold %f reached at %f, %d' % (
                             self.min_ms1_intensity, intensity, fragmented_count))
                     break
@@ -469,10 +470,10 @@ class RoiController(TopNController):
         self.live_roi_last_rt = []  # last fragmentation time of ROI
 
     def handle_acquisition_open(self):
-        self.logger.info('Acquisition open')
+        logger.info('Acquisition open')
 
     def handle_acquisition_closing(self):
-        self.logger.info('Acquisition closing')
+        logger.info('Acquisition closing')
 
     def _process_scan(self, scan):
         # keep growing ROIs if we encounter a new ms1 scan
@@ -494,7 +495,7 @@ class RoiController(TopNController):
 
                 # stopping criteria is done based on the scores
                 if scores[i] <= 0:
-                    self.logger.debug('Time %f Top-%d ions have been selected' % (rt, self.N))
+                    logger.debug('Time %f Top-%d ions have been selected' % (rt, self.N))
                     break
 
                 # updated fragmented list and times
@@ -594,10 +595,10 @@ class TreeController(Controller):
         self.num_windows = num_windows
 
     def handle_acquisition_open(self):
-        self.logger.info('Acquisition open')
+        logger.info('Acquisition open')
 
     def handle_acquisition_closing(self):
-        self.logger.info('Acquisition closing')
+        logger.info('Acquisition closing')
 
     def _process_scan(self, scan):
         # if there's a previous ms1 scan to process
@@ -611,7 +612,7 @@ class TreeController(Controller):
             default_range = [DEFAULT_MS1_SCAN_WINDOW]  # TODO: this should maybe come from somewhere else?
             locations = DiaWindows(mzs, default_range, self.dia_design, self.window_type, self.kaufmann_design,
                                    self.extra_bins, self.num_windows).locations
-            self.logger.debug('Window locations {}'.format(locations))
+            logger.debug('Window locations {}'.format(locations))
             for i in range(len(locations)):  # define isolation window around the selected precursor ions
                 isolation_windows = locations[i]
                 dda_scan_params = ScanParameters()

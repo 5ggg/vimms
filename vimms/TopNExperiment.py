@@ -1,5 +1,7 @@
 import os
 
+from loguru import logger
+
 from vimms.Common import save_obj, create_if_not_exist
 from vimms.Controller import TopNController
 from vimms.DataGenerator import DataSource, PeakSampler
@@ -24,9 +26,9 @@ def run_experiment(param):
     rt_tol = param['rt_tol']
 
     if os.path.isfile(mzml_out) and os.path.isfile(pickle_out):
-        print('Skipping %s' % (analysis_name))
+        logger.debug('Skipping %s' % (analysis_name))
     else:
-        print('Processing %s' % (analysis_name))
+        logger.debug('Processing %s' % (analysis_name))
         peak_sampler = param['peak_sampler']
         if peak_sampler is None:  # extract density from the fragmenatation file
             mzml_path = param['mzml_path']
@@ -68,7 +70,7 @@ def run_parallel_experiment(params):
 
     analysis_names = dview.map_sync(run_experiment, params)
     for analysis_name in analysis_names:
-        print(analysis_name)
+        logger.debug(analysis_name)
 
 
 def run_serial_experiment(params):
@@ -80,7 +82,7 @@ def run_serial_experiment(params):
     total = len(params)
     for i in range(len(params)):
         param = params[i]
-        print('Processing \t%d/%d\t%s' % (i + 1, total, param['analysis_name']))
+        logger.debug('Processing \t%d/%d\t%s' % (i + 1, total, param['analysis_name']))
         run_experiment(param)
 
 
@@ -105,8 +107,8 @@ def get_params(experiment_name, Ns, rt_tols, mz_tol, isolation_window, ionisatio
     :return: a list of parameters
     '''
     create_if_not_exist(out_dir)
-    print('N =', Ns)
-    print('rt_tol =', rt_tols)
+    logger.debug('N =', Ns)
+    logger.debug('rt_tol =', rt_tols)
     params = []
     for N in Ns:
         for rt_tol in rt_tols:
@@ -134,7 +136,7 @@ def get_params(experiment_name, Ns, rt_tols, mz_tol, isolation_window, ionisatio
             if fragfiles is not None:
                 param_dict['fragfiles'] = fragfiles
             params.append(param_dict)
-    print('len(params) =', len(params))
+    logger.debug('len(params) =', len(params))
     return params
 
 

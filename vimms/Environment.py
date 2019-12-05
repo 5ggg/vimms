@@ -1,15 +1,16 @@
 import time
 from pathlib import Path
 
+from loguru import logger
 from tqdm import tqdm
 
-from vimms.Common import LoggerMixin, DEFAULT_MS1_SCAN_WINDOW
+from vimms.Common import DEFAULT_MS1_SCAN_WINDOW
 from vimms.Controller import TopNController, HybridController
 from vimms.MassSpec import ScanParameters, IndependentMassSpectrometer
 from vimms.MzmlWriter import MzmlWriter
 
 
-class Environment(LoggerMixin):
+class Environment(object):
     def __init__(self, mass_spec, controller, min_time, max_time, progress_bar=True, out_dir=None, out_file=None):
         """
         Initialises a synchronous environment to run the mass spec and controller
@@ -19,8 +20,8 @@ class Environment(LoggerMixin):
         :param max_time: end time
         :param progress_bar: True if a progress bar is to be shown
         """
-        self.logger.info('Initialising environment with mass spec %s and controller %s' %
-                         (mass_spec, controller))
+        logger.info('Initialising environment with mass spec %s and controller %s' %
+                    (mass_spec, controller))
         self.scan_channel = []
         self.task_channel = []
         self.mass_spec = mass_spec
@@ -97,7 +98,7 @@ class Environment(LoggerMixin):
             try:
                 bar.close()
             except Exception as e:
-                self.logger.warning('Failed to close progress bar: %s' % str(e))
+                logger.warning('Failed to close progress bar: %s' % str(e))
                 pass
 
     def add_scan(self, scan):
@@ -137,14 +138,14 @@ class Environment(LoggerMixin):
             else:  # both our_dir and out_file are provided
                 mzml_filename = Path(out_dir, out_file)
 
-        self.logger.debug('Writing mzML file to %s' % mzml_filename)
+        logger.debug('Writing mzML file to %s' % mzml_filename)
         try:
             precursor_information = self.controller.precursor_information
         except AttributeError:
             precursor_information = None
         writer = MzmlWriter('my_analysis', self.controller.scans, precursor_information)
         writer.write_mzML(mzml_filename)
-        self.logger.debug('mzML file successfully written!')
+        logger.debug('mzML file successfully written!')
 
     def _set_initial_values(self):
         """

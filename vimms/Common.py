@@ -5,13 +5,13 @@ import math
 import os
 import pathlib
 import pickle
+import sys
 import zipfile
 from bisect import bisect_left
 
 import numpy as np
-
-# some useful constants
 import requests
+from loguru import logger
 from tqdm import tqdm
 
 MZ = 'mz'
@@ -31,7 +31,7 @@ PROTON_MASS = 1.00727645199076
 
 def create_if_not_exist(out_dir):
     if not os.path.exists(out_dir) and len(out_dir) > 0:
-        print('Created %s' % out_dir)
+        logger.info('Created %s' % out_dir)
         pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
 
 
@@ -44,7 +44,7 @@ def save_obj(obj, filename):
     """
     out_dir = os.path.dirname(filename)
     create_if_not_exist(out_dir)
-    print('Saving %s to %s' % (type(obj), filename))
+    logger.info('Saving %s to %s' % (type(obj), filename))
     with gzip.GzipFile(filename, 'w') as f:
         pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -59,7 +59,7 @@ def load_obj(filename):
         with gzip.GzipFile(filename, 'rb') as f:
             return pickle.load(f)
     except OSError:
-        logging.getLogger().warning('Old, invalid or missing pickle in %s. Please regenerate this file.' % filename)
+        logger.warning('Old, invalid or missing pickle in %s. Please regenerate this file.' % filename)
         return None
 
 
@@ -118,30 +118,18 @@ def takeClosest(myList, myNumber):
 
 
 def set_log_level_warning():
-    logging.getLogger().setLevel(logging.WARNING)
+    logger.remove()
+    logger.add(sys.stderr, level=logging.WARNING)
 
 
 def set_log_level_info():
-    logging.getLogger().setLevel(logging.INFO)
+    logger.remove()
+    logger.add(sys.stderr, level=logging.INFO)
 
 
 def set_log_level_debug():
-    logging.getLogger().setLevel(logging.DEBUG)
-
-
-# see https://stackoverflow.com/questions/3375443/how-to-pickle-loggers
-class LoggerMixin():
-    @property
-    def logger(self):
-        # turn off annoying matplotlib messages
-        mpl_logger = logging.getLogger('matplotlib')
-        mpl_logger.setLevel(logging.WARNING)
-        # initalise basic config for all loggers
-        name = "{}".format(type(self).__name__)
-        format = '%(levelname)-7s: %(name)-30s : %(message)s'
-        logging.basicConfig(level=logging.getLogger().level, format=format)
-        logger = logging.getLogger(name)
-        return logger
+    logger.remove()
+    logger.add(sys.stderr, level=logging.DEBUG)
 
 
 def get_rt(spectrum):
@@ -175,7 +163,7 @@ def download_file(url, out_file=None):
 
     if out_file is None:
         out_file = url.rsplit('/', 1)[-1]  # get the last part in url
-    print('Downloading %s' % out_file)
+    logger.info('Downloading %s' % out_file)
 
     with open(out_file, 'wb') as f:
         for data in tqdm(r.iter_content(block_size), total=math.ceil(total_size // block_size), unit='KB',
@@ -187,11 +175,11 @@ def download_file(url, out_file=None):
 
 
 def extract_zip_file(in_file, delete=True):
-    print('Extracting %s' % in_file)
+    logger.info('Extracting %s' % in_file)
     with zipfile.ZipFile(file=in_file) as zip_file:
         for file in tqdm(iterable=zip_file.namelist(), total=len(zip_file.namelist())):
             zip_file.extract(member=file)
 
     if delete:
-        print('Deleting %s' % in_file)
+        logger.info('Deleting %s' % in_file)
         os.remove(in_file)

@@ -5,6 +5,7 @@ import math
 import numpy as np
 import pylab as plt
 import scipy
+from loguru import logger
 
 
 class BlockData(object):
@@ -26,7 +27,7 @@ class BlockData(object):
         for j in range(len(self.datasets)):
             for i in range(len(self.keys[j])):
                 self.intensity_mats.append(self._block_file(i, j))
-                print("Processed", self.keys[j][i])
+                logger.debug("Processed " + self.keys[j][i])
 
     def _block_file(self, num, data_num):
         intensity_mat = np.zeros((self.n_mz_bin_lower, self.n_rt_bin_lower), np.double)
@@ -55,7 +56,7 @@ class BlockData(object):
         return intensity_mat
 
     def plot(self, data_num):
-        print("Warning: Python prints plots in a stupid stupid way!")
+        logger.warning("Warning: Python prints plots in a stupid stupid way!")
         plt.imshow(np.log(self.intensity_mats[data_num][-1:0:-1] + 1), aspect='auto')
 
     def combine(self, plot=True):
@@ -217,14 +218,14 @@ class VB_PCA(object):
                 for m in range(self.M):
                     LB += (-(self.D / 2) * np.log(2 * math.pi) - 0.5 * sum(np.diag(self.sigw[m])) + sum(
                         self.e_w[m, :] ** 2))
-                    print((-(self.D / 2) * np.log(2 * math.pi) - 0.5 * np.log(
+                    logger.debug((-(self.D / 2) * np.log(2 * math.pi) - 0.5 * np.log(
                         np.linalg.det(self.sigw[m])) - 0.5 * self.D))
                     LB -= (-(self.D / 2) * np.log(2 * math.pi) - 0.5 * np.log(
                         np.linalg.det(self.sigw[m])) - 0.5 * self.D)
 
                 # likelihood bit
                 LB += (-(self.N * self.M / 2) * np.log(2 * math.pi) + (
-                            self.N * self.M / 2) * e_log_tau - 0.5 * e_tau * sum(
+                        self.N * self.M / 2) * e_log_tau - 0.5 * e_tau * sum(
                     sum((ZY ** 2))) - 2 * sum(
                     sum(Z * (np.multiply(np.matmul(self.e_w, self.e_X.T).T, Y)))) + outer_expect)
                 self.B.append(LB)

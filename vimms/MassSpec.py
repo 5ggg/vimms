@@ -7,8 +7,9 @@ import clr
 import numpy as np
 from clr import ListAssemblies
 from events import Events
+from loguru import logger
 
-from vimms.Common import LoggerMixin, adduct_transformation, POSITIVE, NEGATIVE
+from vimms.Common import adduct_transformation, POSITIVE, NEGATIVE
 
 
 class Peak(object):
@@ -181,7 +182,7 @@ class ExclusionItem(object):
         self.to_rt = to_rt
 
 
-class IndependentMassSpectrometer(LoggerMixin):
+class IndependentMassSpectrometer(object):
     """
     A class that represents (synchronous) mass spectrometry process.
     Independent here refers to how the intensity of each peak in a scan is independent of each other
@@ -358,9 +359,9 @@ class IndependentMassSpectrometer(LoggerMixin):
         e.targets = []
 
     def close(self):
-        self.logger.debug('Acquisition stream is closing!')
+        logger.debug('Acquisition stream is closing!')
         self.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING)
-        self.logger.debug('Unregistering event handlers')
+        logger.debug('Unregistering event handlers')
         self.clear_events()
 
     ####################################################################################################################
@@ -394,7 +395,7 @@ class IndependentMassSpectrometer(LoggerMixin):
                                                            current_level, next_level)
 
         self.time += current_scan_duration
-        self.logger.info('Time %f Len(queue)=%d' % (self.time, len(self.processing_queue)))
+        logger.info('Time %f Len(queue)=%d' % (self.time, len(self.processing_queue)))
         return current_scan_duration
 
     def _sample_scan_duration(self, current_DEW, current_N, current_level, next_level):
@@ -608,10 +609,10 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         # make sure IAPI assemblies can be found
         assert clr.FindAssembly('FusionLibrary') is not None
         ref = clr.AddReference('FusionLibrary')
-        self.logger.debug('AddReference: %s' % ref)
+        logger.debug('AddReference: %s' % ref)
 
         short = list(ListAssemblies(False))
-        self.logger.debug('ListAssemblies: %s', short)
+        logger.debug('ListAssemblies: %s', short)
         assert 'Fusion.API-1.0' in short
         assert 'API-2.0' in short
         assert 'Spectrum-1.0' in short
@@ -626,13 +627,13 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         # if self.filename is None, here we initialise fake FusionBridge that reads data from that mzML file
         # otherwise we will attempt to connect the actual instrument and read the acquisition data
         if self.filename is not None:
-            self.logger.debug('FusionBridge initialising in DEBUG mode. Input mzML is %s' % self.filename)
+            logger.debug('FusionBridge initialising in DEBUG mode. Input mzML is %s' % self.filename)
         else:
-            self.logger.debug('FusionBridge initialising')
+            logger.debug('FusionBridge initialising')
         from FusionLibrary import FusionBridge
         self.fusion_bridge = FusionBridge(self.filename, self.show_console_logs)
 
-        self.logger.debug('Attaching event handlers')
+        logger.debug('Attaching event handlers')
         atexit.register(self.fusion_bridge.CloseDown)  # called when the current process exits
         scan_handler_delegate = FusionBridge.UserScanArriveDelegate(self.step)
         state_changed_delegate = FusionBridge.UserStateChangedDelegate(self.handle_state_changed)
@@ -676,11 +677,11 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         self.idx += 1
 
     def handle_can_accept_next_custom_scan(self, sender, args):
-        self.logger.debug('handleCanAcceptNextCustomScan called')
+        logger.debug('handleCanAcceptNextCustomScan called')
         self.fire_event(self.CAN_ACCEPT_NEXT_CUSTOM_SCAN, args)
 
     def handle_state_changed(self, sender, args):
-        self.logger.debug('handleStateChanged called')
+        logger.debug('handleStateChanged called')
         self.fire_event(self.STATE_CHANGED, args)
 
     def fire_event(self, event_name, arg=None):
@@ -706,10 +707,10 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             # get one scan param from the mass spec processing queue and send it over
             param = self._get_param()
             if param is not None:
-                self.logger.debug('Trying to send a custom scan: %s' % param)
+                logger.debug('Trying to send a custom scan: %s' % param)
                 raise NotImplementedError()
             else:
-                self.logger.debug('Got a None custom scan')
+                logger.debug('Got a None custom scan')
 
     def reset(self):
         super().reset()
@@ -717,6 +718,6 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
 
     def close(self):
         super().close()
-        self.logger.debug('Closing fusion bridge')
+        logger.debug('Closing fusion bridge')
         self.fusion_bridge.CloseDown()
         self.fusion_bridge = None

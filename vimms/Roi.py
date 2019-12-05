@@ -6,6 +6,7 @@ from collections import OrderedDict
 import numpy as np
 import pylab as plt
 import pymzml
+from loguru import logger
 from scipy.stats import pearsonr
 
 from vimms.Chemicals import ChemicalCreator, UnknownChemical, GET_MS2_BY_PEAKS
@@ -157,7 +158,7 @@ def make_roi(input_file, mz_tol=0.001, mz_units='Da', min_length=10, min_intensi
     # input_file = 'Beer_multibeers_1_fullscan1.mzML'
 
     if not mz_units == 'Da' and not mz_units == 'ppm':
-        print("Unknown mz units, use Da or ppm")
+        logger.warning("Unknown mz units, use Da or ppm")
         return None, None
 
     run = pymzml.run.Reader(input_file, MS1_Precision=5e-6,
@@ -203,7 +204,7 @@ def make_roi(input_file, mz_tol=0.001, mz_units='Da', min_length=10, min_intensi
                 pos = live_roi.index(roi)
                 del live_roi[pos]
 
-            # print("Scan @ {}, {} live ROIs".format(current_ms1_scan_rt, len(live_roi)))
+            # logger.debug("Scan @ {}, {} live ROIs".format(current_ms1_scan_rt, len(live_roi)))
 
     # process all the live ones - keeping only those that 
     # are longer than the minimum length
@@ -251,14 +252,14 @@ class RoiToChemicalCreator(ChemicalCreator):
         self.alpha = math.inf
         self.counts = [[] for i in range(self.ms_levels)]
         if self.ms_levels > 2:
-            self.logger.warning(
+            logger.warning(
                 "Warning ms_level > 3 not implemented properly yet. Uses scaled ms_level = 2 information for now")
 
         self.chromatograms = []
         self.chemicals = []
         for i in range(len(self.rois_data)):
             if i % 50000 == 0:
-                self.logger.debug('%6d/%6d' % (i, len(self.rois_data)))
+                logger.debug('%6d/%6d' % (i, len(self.rois_data)))
             roi = self.rois_data[i]
 
             # raise numpy warning as exception, see https://stackoverflow.com/questions/15933741/how-do-i-catch-a-numpy-warning-like-its-an-exception-not-just-for-testing
@@ -267,9 +268,9 @@ class RoiToChemicalCreator(ChemicalCreator):
                 try:
                     chrom = roi.to_chromatogram()
                 except FloatingPointError:
-                    self.logger.debug('Invalid chromatogram {}'.format(i))
+                    logger.debug('Invalid chromatogram {}'.format(i))
                 except ZeroDivisionError:
-                    self.logger.debug('Invalid chromatogram {}'.format(i))
+                    logger.debug('Invalid chromatogram {}'.format(i))
 
             if chrom is not None:
                 chem = self._to_unknown_chemical(chrom)
@@ -282,7 +283,7 @@ class RoiToChemicalCreator(ChemicalCreator):
                 self.chromatograms.append(chrom)
                 self.chemicals.append(chem)
         assert len(self.chromatograms) == len(self.chemicals)
-        self.logger.info('Found %d ROIs above thresholds' % len(self.chromatograms))
+        logger.info('Found %d ROIs above thresholds' % len(self.chromatograms))
 
     def sample(self, chromatogram_creator, mz_range, rt_range, min_ms1_intensity, n_ms1_peaks, ms_levels=2,
                chemical_type=None,

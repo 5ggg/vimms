@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 import pymzml
+from loguru import logger
 
 from vimms.Common import get_rt
 from vimms.Roi import make_roi, RoiToChemicalCreator
@@ -74,7 +75,7 @@ def get_precursor_info(fragfile):
                 row.extend(res)
                 data.append(row)
             except ValueError as e:
-                print(e)
+                logger.warning(e)
             except KeyError as e:
                 continue  # sometimes we can't find the intensity value precursor['i'] in precursors
 
