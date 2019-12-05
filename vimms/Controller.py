@@ -300,7 +300,6 @@ class TopNController(Controller):
                 return True
         return False
 
-
 class HybridController(TopNController):
     def __init__(self, ionisation_mode, N, scan_param_changepoints,
                  isolation_window, mz_tol, rt_tol, min_ms1_intensity,
@@ -326,7 +325,7 @@ class HybridController(TopNController):
         assert len(self.N) == len(self.scan_param_changepoints) == len(self.isolation_window) == len(
             self.mz_tol) == len(self.rt_tol)
         if self.purity_threshold != 0:
-            assert all(self.n_purity_scans < np.array(self.N))
+            assert all(self.n_purity_scans <= np.array(self.N))
 
     def _process_scan(self, scan):
         # if there's a previous ms1 scan to process
@@ -376,7 +375,7 @@ class HybridController(TopNController):
                 if self._is_excluded(mz, rt):
                     continue
 
-                if purity < self.purity_threshold:
+                if purity <= self.purity_threshold:
                     purity_shift_amounts = [self.purity_shift * (i - (self.n_purity_scans - 1) / 2) for i in
                                             range(self.n_purity_scans)]
                     for purity_idx in range(self.n_purity_scans):
