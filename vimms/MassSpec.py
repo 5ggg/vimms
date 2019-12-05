@@ -630,6 +630,8 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             logger.debug('FusionBridge initialising in DEBUG mode. Input mzML is %s' % self.filename)
         else:
             logger.debug('FusionBridge initialising')
+
+        # noinspection PyUnresolvedReferences
         from FusionLibrary import FusionBridge
         self.fusion_bridge = FusionBridge(self.filename, self.show_console_logs)
 
