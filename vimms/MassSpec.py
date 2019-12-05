@@ -52,9 +52,7 @@ class Scan(object):
     def __init__(self, scan_id, mzs, intensities, ms_level, rt,
                  scan_duration=None, isolation_windows=None,
                  precursor_mz=None, polarity=POSITIVE,
-                 dynamic_exclusion_mz_tol=None, dynamic_exclusion_rt_tol=None,
-                 # TODO: these two parameters do not belong here??!
-                 parent=None):
+                 scan_params=None, parent=None):
         """
         Creates a scan
         :param scan_id: current scan id
@@ -66,8 +64,7 @@ class Scan(object):
         :param isolation_windows: the window to isolate precursor peak, if known
         :param precursor_mz: the precursor m/z, if known
         :param polarity: the polarity of the scan, either POSITIVE or NEGATIVE
-        :param dynamic_exclusion_mz_tol: dynamic exclusion m/z tolerance (should be removed?)
-        :param dynamic_exclusion_rt_tol: dynamic exclusion RT tolerance (should be removed?)
+        :param scan_params: the parameters used to generate this scan, if known
         :param parent: parent precursor peak, if known
         """
         assert len(mzs) == len(intensities)
@@ -86,8 +83,7 @@ class Scan(object):
         self.isolation_windows = isolation_windows
         self.precursor_mz = precursor_mz
         self.polarity = polarity
-        self.dynamic_exclusion_mz_tol = dynamic_exclusion_mz_tol
-        self.dynamic_exclusion_rt_tol = dynamic_exclusion_rt_tol
+        self.scan_params = scan_params
         self.parent = parent
 
     def __repr__(self):
@@ -441,7 +437,7 @@ class IndependentMassSpectrometer(object):
     def _get_scan(self, scan_time, param):
         """
         Constructs a scan at a particular timepoint
-        :param time: the timepoint
+        :param scan_time: the timepoint
         :return: a mass spectrometry scan at that time
         """
         scan_mzs = []  # all the mzs values in this scan
@@ -449,8 +445,6 @@ class IndependentMassSpectrometer(object):
         ms_level = param.get(ScanParameters.MS_LEVEL)
         isolation_windows = param.get(ScanParameters.ISOLATION_WINDOWS)
         precursor_mz = param.get(ScanParameters.PRECURSOR)
-        dynamic_exclusion_mz_tol = param.get(ScanParameters.DYNAMIC_EXCLUSION_MZ_TOL)
-        dynamic_exclusion_rt_tol = param.get(ScanParameters.DYNAMIC_EXCLUSION_RT_TOL)
         scan_id = self.idx
 
         # for all chemicals that come out from the column coupled to the mass spec
@@ -491,8 +485,7 @@ class IndependentMassSpectrometer(object):
         return Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
                     scan_duration=None, isolation_windows=isolation_windows,
                     precursor_mz=precursor_mz, polarity=self.ionisation_mode,
-                    dynamic_exclusion_mz_tol=dynamic_exclusion_mz_tol,
-                    dynamic_exclusion_rt_tol=dynamic_exclusion_rt_tol)
+                    scan_params=param)
 
     def _get_chem_indices(self, query_rt):
         rtmin_check = self.chrom_min_rts <= query_rt
@@ -612,7 +605,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         logger.debug('AddReference: %s' % ref)
 
         short = list(ListAssemblies(False))
-        logger.debug('ListAssemblies: %s', short)
+        logger.debug('ListAssemblies: %s' % str(short))
         assert 'Fusion.API-1.0' in short
         assert 'API-2.0' in short
         assert 'Spectrum-1.0' in short
@@ -658,22 +651,19 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         parent = None
 
         # populate ms2 values
-        # TODO: we need to extract this from the IAPI Scan Header or keep track of this internally somehow
+        # TODO: we need to extract this info from the IAPI Scan Header or keep track of this internally somehow
         if ms_level > 1:
             precursor_mz = None
             isolation_windows = None  # specified in Vinny's nested format
-            dynamic_exclusion_mz_tol = None
-            dynamic_exclusion_rt_tol = None
+            scan_params = None # TODO: the scan parameters used to generate this scan. We should keep track of this
+            dynamic_exclusion_mz_tol = None # TODO: can be extracted from the scan_params
+            dynamic_exclusion_rt_tol = None # TODO: can be extracted from the scan_params
             parent = None
 
         vimms_scan = Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
                           scan_duration=None, isolation_windows=isolation_windows,
                           precursor_mz=None, polarity=POSITIVE,
-                          dynamic_exclusion_mz_tol=None, dynamic_exclusion_rt_tol=None,
-                          parent=None)
-        # precursor_mz=precursor_mz, polarity=polarity,
-        # dynamic_exclusion_mz_tol=dynamic_exclusion_mz_tol, dynamic_exclusion_rt_tol=dynamic_exclusion_rt_tol,
-        # parent=parent)
+                          scan_params=None, parent=None)
 
         self.fire_event(self.MS_SCAN_ARRIVED, vimms_scan)
         self.idx += 1
@@ -694,7 +684,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             scan = arg
             self.environment.add_scan(scan)
         elif event_name == self.CAN_ACCEPT_NEXT_CUSTOM_SCAN:
-            self._try_send_custom_scan()
+            self.send_custom_scan()
         else:
             # pretend to fire the event
             # actually here we just runs the event handler method directly
@@ -704,15 +694,14 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             else:
                 e()
 
-    def _try_send_custom_scan(self):
-        if self.fusionScanControl is not None and len(self.fusionScanControl.PossibleParameters) > 0:
-            # get one scan param from the mass spec processing queue and send it over
-            param = self._get_param()
-            if param is not None:
-                logger.debug('Trying to send a custom scan: %s' % param)
-                raise NotImplementedError()
-            else:
-                logger.debug('Got a None custom scan')
+    def send_custom_scan(self):
+        """
+        Translates the last ScanParameter object in the processing queue to a custom scan using FusionBridge
+        and sends it over to the actual mass spec.
+        """
+        # get one scan param from the mass spec processing queue and send it over
+        param = self._get_param()
+        logger.debug('Sending param ' + str(param))
 
     def reset(self):
         super().reset()

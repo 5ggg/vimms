@@ -294,8 +294,8 @@ class TopNController(Controller):
             # TODO: we need to add a repeat count too, i.e. how many times we've seen a fragment peak before
             #  it gets excluded (now it's basically 1)
             mz = precursor.precursor_mz
-            mz_tol = scan.dynamic_exclusion_mz_tol
-            rt_tol = scan.dynamic_exclusion_rt_tol
+            mz_tol = scan.scan_params.get(ScanParameters.DYNAMIC_EXCLUSION_MZ_TOL)
+            rt_tol = scan.scan_params.get(ScanParameters.DYNAMIC_EXCLUSION_RT_TOL)
             mz_lower = mz * (1 - mz_tol / 1e6)
             mz_upper = mz * (1 + mz_tol / 1e6)
             rt_lower = current_time
@@ -326,6 +326,7 @@ class TopNController(Controller):
                     'Excluded precursor ion mz {:.4f} rt {:.2f} because of {}'.format(mz, rt, x))
                 return True
         return False
+
 
 class HybridController(TopNController):
     def __init__(self, ionisation_mode, N, scan_param_changepoints,
