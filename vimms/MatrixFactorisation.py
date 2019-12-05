@@ -1,8 +1,9 @@
 import bisect
 import copy
+import math
+
 import numpy as np
 import pylab as plt
-import math
 import scipy
 
 
@@ -64,7 +65,8 @@ class BlockData(object):
         return combined
 
 
-def gibbs_sampler(X, observed, R, prior_u, prec_u, prior_v, prec_v, alpha, n_its = 1000, burn_in = 100, true_V=[], sample_known = True):
+def gibbs_sampler(X, observed, R, prior_u, prec_u, prior_v, prec_v, alpha, n_its=1000, burn_in=100, true_V=[],
+                  sample_known=True):
     # initialise
     N, M = X.shape
     U = np.random.normal(size=(N, R))
@@ -138,7 +140,7 @@ def gibbs_sampler(X, observed, R, prior_u, prec_u, prior_v, prec_v, alpha, n_its
         else:
             updated_samples_U = []
             for i in range(len(samples_U)):
-                updated_samples_U.append(samples_U[i][range_U,:])
+                updated_samples_U.append(samples_U[i][range_U, :])
             return range_U, updated_samples_U
 
 
@@ -172,7 +174,7 @@ class VB_PCA(object):
 
             # update X
             for n in range(self.N):
-                Zlist = [vec * np.ones((self.D, self.D)) for vec in Z[n,:]]
+                Zlist = [vec * np.ones((self.D, self.D)) for vec in Z[n, :]]
                 self.sigx[n] = np.linalg.inv(np.identity(self.D) + e_tau * sum(np.array(self.e_wwt) * np.array(Zlist)))
                 self.e_X[n, :] = e_tau * np.matmul(self.sigx[n], np.sum(
                     np.multiply(self.e_w, np.array([(ZY[n, :]).tolist() for i in range(self.D)]).T), axis=0))
@@ -180,7 +182,7 @@ class VB_PCA(object):
 
             # update W
             for m in range(self.M):
-                Zlist = [vec * np.ones((self.D, self.D)) for vec in Z[:,m]]
+                Zlist = [vec * np.ones((self.D, self.D)) for vec in Z[:, m]]
                 self.sigw[m] = np.linalg.inv(np.identity(self.D) + e_tau * sum(np.array(self.e_XXt) * np.array(Zlist)))
                 self.e_w[m, :] = e_tau * np.matmul(self.sigw[m], np.sum(
                     np.multiply(self.e_X, np.array([(Y[:, m] * Z[:, m]).tolist() for i in range(self.D)]).T), axis=0))
@@ -192,7 +194,7 @@ class VB_PCA(object):
             RSS = 0
             for n in range(self.N):
                 for m in range(self.M):
-                    outer_expect += Z[n,m] * (np.trace(np.matmul(self.e_wwt[m], self.sigx[n])) + np.matmul(
+                    outer_expect += Z[n, m] * (np.trace(np.matmul(self.e_wwt[m], self.sigx[n])) + np.matmul(
                         np.matmul(self.e_X[n, :], self.e_wwt[m]), self.e_X[n, :][np.newaxis].T))
                     RSS += (ZY[n, m] ** 2) - 2 * np.matmul(self.e_w[m].T, self.e_X[n]) * (ZY[n, m])
             f = b + 0.5 * RSS + 0.5 * outer_expect
@@ -207,17 +209,24 @@ class VB_PCA(object):
                 LB -= (e * np.log(f) + (e - 1) * e_log_tau - f * e_tau - scipy.special.loggamma(e))
 
                 for n in range(self.N):
-                    LB += (-(self.D / 2) * np.log(2 * math.pi) - 0.5 * sum(np.diag(self.sigx[n])) + sum(self.e_X[n, :] ** 2))
-                    LB -= (-(self.D / 2) * np.log(2 * math.pi) - 0.5 * np.log(np.linalg.det(self.sigx[n])) - 0.5 * self.D)
+                    LB += (-(self.D / 2) * np.log(2 * math.pi) - 0.5 * sum(np.diag(self.sigx[n])) + sum(
+                        self.e_X[n, :] ** 2))
+                    LB -= (-(self.D / 2) * np.log(2 * math.pi) - 0.5 * np.log(
+                        np.linalg.det(self.sigx[n])) - 0.5 * self.D)
 
                 for m in range(self.M):
-                    LB += (-(self.D / 2) * np.log(2 * math.pi) - 0.5 * sum(np.diag(self.sigw[m])) + sum(self.e_w[m, :] ** 2))
-                    print((-(self.D / 2) * np.log(2 * math.pi) - 0.5 * np.log(np.linalg.det(self.sigw[m])) - 0.5 * self.D))
-                    LB -= (-(self.D / 2) * np.log(2 * math.pi) - 0.5 * np.log(np.linalg.det(self.sigw[m])) - 0.5 * self.D)
+                    LB += (-(self.D / 2) * np.log(2 * math.pi) - 0.5 * sum(np.diag(self.sigw[m])) + sum(
+                        self.e_w[m, :] ** 2))
+                    print((-(self.D / 2) * np.log(2 * math.pi) - 0.5 * np.log(
+                        np.linalg.det(self.sigw[m])) - 0.5 * self.D))
+                    LB -= (-(self.D / 2) * np.log(2 * math.pi) - 0.5 * np.log(
+                        np.linalg.det(self.sigw[m])) - 0.5 * self.D)
 
                 # likelihood bit
-                LB += (-(self.N * self.M / 2) * np.log(2 * math.pi) + (self.N * self.M / 2) * e_log_tau - 0.5 * e_tau * sum(
-                    sum((ZY ** 2))) - 2 * sum(sum(Z * (np.multiply(np.matmul(self.e_w, self.e_X.T).T, Y)))) + outer_expect)
+                LB += (-(self.N * self.M / 2) * np.log(2 * math.pi) + (
+                            self.N * self.M / 2) * e_log_tau - 0.5 * e_tau * sum(
+                    sum((ZY ** 2))) - 2 * sum(
+                    sum(Z * (np.multiply(np.matmul(self.e_w, self.e_X.T).T, Y)))) + outer_expect)
                 self.B.append(LB)
 
                 # break if change in bound is less than the tolerance
@@ -236,7 +245,7 @@ class VB_PCA(object):
             self.sigx.append(np.identity(self.D))
         prec_x = np.identity(self.D) + np.dot(np.dot(self.e_w.T, np.diag(new_Z[-1, :])), self.e_w) * self.e_tau[-1]
         self.sigx[-1] = np.linalg.inv(prec_x)
-        self.e_X[-1] = np.dot(self.sigx[-1], np.dot(self.e_w.T, (new_Y[-1,]*new_Z[-1,]))) * self.e_tau[-1]
+        self.e_X[-1] = np.dot(self.sigx[-1], np.dot(self.e_w.T, (new_Y[-1,] * new_Z[-1,]))) * self.e_tau[-1]
         self.Y = new_Y
         self.Z = new_Z
         self.Y_reconstructed = np.matmul(self.e_X, self.e_w.T)

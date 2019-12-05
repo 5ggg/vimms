@@ -1,4 +1,3 @@
-import sys
 import time
 from pathlib import Path
 
@@ -130,12 +129,12 @@ class Environment(LoggerMixin):
         :param out_file: output filename
         :return: None
         """
-        if out_file is None: # if no filename provided, just quits
+        if out_file is None:  # if no filename provided, just quits
             return
         else:
-            if out_dir is None: # no out_dir, use only out_file
+            if out_dir is None:  # no out_dir, use only out_file
                 mzml_filename = Path(out_file)
-            else: # both our_dir and out_file are provided
+            else:  # both our_dir and out_file are provided
                 mzml_filename = Path(out_dir, out_file)
 
         self.logger.debug('Writing mzML file to %s' % mzml_filename)
@@ -225,7 +224,7 @@ class IAPIEnvironment(Environment):
             self.scan_channel.append(scan)
             scan = self.scan_channel.pop(0)
             tasks = self.controller.handle_scan(scan)
-            self.add_tasks(tasks) # push new tasks to mass spec queue
+            self.add_tasks(tasks)  # push new tasks to mass spec queue
 
             # update controller internal states AFTER a scan has been generated and handled
             self.controller.update_state_after_scan(scan)

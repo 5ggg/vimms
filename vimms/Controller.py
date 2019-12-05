@@ -150,6 +150,7 @@ class SimpleMs1Controller(Controller):
     def reset(self):
         pass
 
+
 class TopNController(Controller):
     """
     A Top-N controller. Does an MS1 scan followed by N fragmentation scans of the peaks with the highest intensity
@@ -731,7 +732,7 @@ class TestController(TopNController):
         if self.last_ms1_scan is not None and self.extra_scans_done is False:
             if self.last_ms1_scan.rt > rt2scan:
                 mzs = np.array([100, 200, 300, 400])
-                intensities = np.array([1 , 2, 3, 4])
+                intensities = np.array([1, 2, 3, 4])
 
                 # loop over points in decreasing intensity
                 fragmented_count = 0

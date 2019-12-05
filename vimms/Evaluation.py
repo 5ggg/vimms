@@ -47,12 +47,12 @@ class TopNEvaluationStrategy(object):
 
     def evaluate(self, controller):
         return compute_performance_scenario_2(controller,
-                                       self.params['dataset'],
-                                       self.params['min_ms1_intensity'],
-                                       self.params['fullscan_filename'],
-                                       self.params['fragfile_filename'],
-                                       self.params['fullscan_peaks_df'],
-                                       self.params['fragmentation_peaks_df'],
-                                       self.params['matching_mz_tol'],
-                                       self.params['matching_rt_tol'],
-                                       chem_to_frag_events=None)
+                                              self.params['dataset'],
+                                              self.params['min_ms1_intensity'],
+                                              self.params['fullscan_filename'],
+                                              self.params['fragfile_filename'],
+                                              self.params['fullscan_peaks_df'],
+                                              self.params['fragmentation_peaks_df'],
+                                              self.params['matching_mz_tol'],
+                                              self.params['matching_rt_tol'],
+                                              chem_to_frag_events=None)

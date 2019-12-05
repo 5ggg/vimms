@@ -1,5 +1,5 @@
+import math
 import copy
-import glob
 import math
 import random
 import re
@@ -8,14 +8,14 @@ from pathlib import Path
 import numpy as np
 import scipy
 import scipy.stats
-import copy
 
 from vimms.ChineseRestaurantProcess import Restricted_Crp
-from vimms.Common import LoggerMixin, CHEM_DATA, POS_TRANSFORMATIONS, load_obj, takeClosest, save_obj
 from vimms.Chromatograms import EmpiricalChromatogram
+from vimms.Common import LoggerMixin, CHEM_DATA, POS_TRANSFORMATIONS, load_obj, save_obj
 
 GET_MS2_BY_PEAKS = "sample"
 GET_MS2_BY_SPECTRA = "spectra"
+
 
 class DatabaseCompound(object):
     def __init__(self, name, chemical_formula, monisotopic_molecular_weight, smiles, inchi, inchikey):
@@ -209,7 +209,6 @@ class KnownChemical(Chemical):
 
     def __hash__(self):
         return hash(self.formula.formula_string)
-
 
 
 class MSN(Chemical):
@@ -455,7 +454,8 @@ class ChemicalCreator(LoggerMixin):
         formula = Formula(formula)
         isotopes = Isotopes(formula)
         adducts = Adducts(formula, self.adduct_proportion_cutoff)
-        return KnownChemical(formula, isotopes, adducts, adjusted_rt, intensity, ROI.chromatogram, None, include_adducts_isotopes)
+        return KnownChemical(formula, isotopes, adducts, adjusted_rt, intensity, ROI.chromatogram, None,
+                             include_adducts_isotopes)
 
     def _get_unknown_msn(self, ms_level, parent=None):  # fix this
         if ms_level == 2:
@@ -611,14 +611,15 @@ def get_key(chem):
     '''
     return (tuple(chem.isotopes), chem.rt, chem.max_intensity)
 
-def RestrictedChemicalCreator(N, ps, prop_ms2_mass=0.7, mz_range = [(0,1000)]):
+
+def RestrictedChemicalCreator(N, ps, prop_ms2_mass=0.7, mz_range=[(0, 1000)]):
     dataset = []
-    chrom = EmpiricalChromatogram(np.array([0,20]),np.array([0,0]),np.array([1,1]))
+    chrom = EmpiricalChromatogram(np.array([0, 20]), np.array([0, 0]), np.array([1, 1]))
     for i in range(N):
         mz = ps.get_peak(1, 1, mz_range[0][0], mz_range[0][1])[0].mz
         chem = UnknownChemical(mz, 0, 1E5, chrom, children=None)
         n_children = int(ps.n_peaks(2, 1))
-        parent_mass_prop = [1/n_children for k in range(n_children)]
+        parent_mass_prop = [1 / n_children for k in range(n_children)]
         children = []
         for j in range(n_children):
             mz = ps.get_peak(2, 1)[0].mz

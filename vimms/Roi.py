@@ -1,12 +1,12 @@
 import bisect
 import math
+import os
 from collections import OrderedDict
 
 import numpy as np
 import pylab as plt
 import pymzml
 from scipy.stats import pearsonr
-import os
 
 from vimms.Chemicals import ChemicalCreator, UnknownChemical, GET_MS2_BY_PEAKS
 from vimms.Chromatograms import EmpiricalChromatogram
@@ -317,7 +317,8 @@ class RoiToChemicalCreator(ChemicalCreator):
             plt.show()
 
 
-def extract_roi(file_names, out_dir, pattern, mzml_path, ps, roi_mz_tol=10, roi_min_length=2, roi_min_intensity=1.75E5, roi_start_rt=0,
+def extract_roi(file_names, out_dir, pattern, mzml_path, ps, roi_mz_tol=10, roi_min_length=2, roi_min_intensity=1.75E5,
+                roi_start_rt=0,
                 roi_stop_rt=1440):
     for i in range(len(file_names)):  # for all mzML files in file_names
         # extract ROI

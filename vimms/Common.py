@@ -174,11 +174,12 @@ def download_file(url, out_file=None):
     current_size = 0
 
     if out_file is None:
-        out_file = url.rsplit('/', 1)[-1] # get the last part in url
+        out_file = url.rsplit('/', 1)[-1]  # get the last part in url
     print('Downloading %s' % out_file)
 
     with open(out_file, 'wb') as f:
-        for data in tqdm(r.iter_content(block_size), total=math.ceil(total_size//block_size) , unit='KB', unit_scale=True):
+        for data in tqdm(r.iter_content(block_size), total=math.ceil(total_size // block_size), unit='KB',
+                         unit_scale=True):
             current_size += len(data)
             f.write(data)
     assert current_size == total_size

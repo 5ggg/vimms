@@ -51,7 +51,8 @@ class Scan(object):
     def __init__(self, scan_id, mzs, intensities, ms_level, rt,
                  scan_duration=None, isolation_windows=None,
                  precursor_mz=None, polarity=POSITIVE,
-                 dynamic_exclusion_mz_tol=None, dynamic_exclusion_rt_tol=None, # TODO: these two parameters do not belong here??!
+                 dynamic_exclusion_mz_tol=None, dynamic_exclusion_rt_tol=None,
+                 # TODO: these two parameters do not belong here??!
                  parent=None):
         """
         Creates a scan
@@ -489,7 +490,8 @@ class IndependentMassSpectrometer(LoggerMixin):
         return Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
                     scan_duration=None, isolation_windows=isolation_windows,
                     precursor_mz=precursor_mz, polarity=self.ionisation_mode,
-                    dynamic_exclusion_mz_tol=dynamic_exclusion_mz_tol, dynamic_exclusion_rt_tol=dynamic_exclusion_rt_tol)
+                    dynamic_exclusion_mz_tol=dynamic_exclusion_mz_tol,
+                    dynamic_exclusion_rt_tol=dynamic_exclusion_rt_tol)
 
     def _get_chem_indices(self, query_rt):
         rtmin_check = self.chrom_min_rts <= query_rt
@@ -656,19 +658,19 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         # TODO: we need to extract this from the IAPI Scan Header or keep track of this internally somehow
         if ms_level > 1:
             precursor_mz = None
-            isolation_windows = None # specified in Vinny's nested format
+            isolation_windows = None  # specified in Vinny's nested format
             dynamic_exclusion_mz_tol = None
             dynamic_exclusion_rt_tol = None
             parent = None
 
-        vimms_scan =  Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
-                           scan_duration=None, isolation_windows=isolation_windows,
-                           precursor_mz=None, polarity=POSITIVE,
-                           dynamic_exclusion_mz_tol=None, dynamic_exclusion_rt_tol=None,
-                           parent=None)
-                           # precursor_mz=precursor_mz, polarity=polarity,
-                           # dynamic_exclusion_mz_tol=dynamic_exclusion_mz_tol, dynamic_exclusion_rt_tol=dynamic_exclusion_rt_tol,
-                           # parent=parent)
+        vimms_scan = Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
+                          scan_duration=None, isolation_windows=isolation_windows,
+                          precursor_mz=None, polarity=POSITIVE,
+                          dynamic_exclusion_mz_tol=None, dynamic_exclusion_rt_tol=None,
+                          parent=None)
+        # precursor_mz=precursor_mz, polarity=polarity,
+        # dynamic_exclusion_mz_tol=dynamic_exclusion_mz_tol, dynamic_exclusion_rt_tol=dynamic_exclusion_rt_tol,
+        # parent=parent)
 
         self.fire_event(self.MS_SCAN_ARRIVED, vimms_scan)
         self.idx += 1

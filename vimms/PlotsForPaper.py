@@ -1,14 +1,14 @@
 import os
 from collections import defaultdict
 
+import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
 import pylab as plt
-import seaborn as sns
-import matplotlib.patches as mpatches
 import pymzml
+import seaborn as sns
 
-from vimms.Chemicals import UnknownChemical, get_absolute_intensity, get_key
+from vimms.Chemicals import UnknownChemical, get_absolute_intensity
 from vimms.Common import load_obj, PROTON_MASS, find_nearest_index_in_array
 from vimms.MassSpec import FragmentationEvent
 from vimms.Roi import make_roi, RoiToChemicalCreator
@@ -306,8 +306,8 @@ def plot_num_scans(real_cumsum_ms1, real_cumsum_ms2, simulated_cumsum_ms1, simul
 
 def plot_matched_intensities(matched_intensities, unmatched_intensities, out_file=None):
     plt.figure()
-    temp1 = plt.hist(np.log(matched_intensities), bins = np.linspace(10,20,50), color='blue')
-    temp2 = plt.hist(np.log(unmatched_intensities), bins = np.linspace(10,20,50), color='red')
+    temp1 = plt.hist(np.log(matched_intensities), bins=np.linspace(10, 20, 50), color='blue')
+    temp2 = plt.hist(np.log(unmatched_intensities), bins=np.linspace(10, 20, 50), color='red')
     plt.title('Matched precursor intensities')
 
     blue_patch = mpatches.Patch(color='blue', label='Matched')
@@ -483,7 +483,8 @@ def get_frag_events(controller, ms_level):
     :param ms_level: The MS-level (usually 2)
     :return: A dictionary where keys are chemicals and values are a list of fragmentation events
     '''
-    filtered_frag_events = list(filter(lambda x: x.ms_level == ms_level, controller.environment.mass_spec.fragmentation_events))
+    filtered_frag_events = list(
+        filter(lambda x: x.ms_level == ms_level, controller.environment.mass_spec.fragmentation_events))
     chem_to_frag_events = defaultdict(list)
     for frag_event in filtered_frag_events:
         key = frag_event.chem
@@ -707,8 +708,7 @@ def evaluate_parallel(all_params, pushed_dict=None):
     rc = ipp.Client()
     dview = rc[:]  # use all engines​
     with dview.sync_imports():
-        import os
-        from vimms.Common import load_obj
+        pass
 
     if pushed_dict is not None:
         dview.push(pushed_dict)
