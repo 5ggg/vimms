@@ -57,24 +57,23 @@ class Environment(LoggerMixin):
                                       self.controller.handle_state_changed)
 
         # run mass spec
-        with tqdm(total=self.max_time - self.min_time, initial=0) as pbar:
-            bar = pbar if self.progress_bar else None
-            self.mass_spec.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING)
-            try:
-                # perform one step of mass spec up to max_time
-                while self.mass_spec.time < self.max_time:
-                    # controller._process_scan() is called here immediately when a scan is produced within a step
-                    scan = self.mass_spec.step()
-                    # update controller internal states AFTER a scan has been generated and handled
-                    self.controller.update_state_after_scan(scan)
-                    # increment progress bar
-                    self._update_progress_bar(bar, scan)
-            finally:
-                self.mass_spec.close()
-                if bar is not None:
-                    bar.close()
-                if self.out_dir is not None and self.out_file is not None:
-                    self.write_mzML(self.out_dir, self.out_file)
+        bar = tqdm(total=self.max_time - self.min_time, initial=0) if self.progress_bar else None
+        self.mass_spec.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING)
+        try:
+            # perform one step of mass spec up to max_time
+            while self.mass_spec.time < self.max_time:
+                # controller._process_scan() is called here immediately when a scan is produced within a step
+                scan = self.mass_spec.step()
+                # update controller internal states AFTER a scan has been generated and handled
+                self.controller.update_state_after_scan(scan)
+                # increment progress bar
+                self._update_progress_bar(bar, scan)
+        except Exception as e:
+            raise e
+        finally:
+            self.mass_spec.close()
+            self.close_progress_bar(bar)
+        self.write_mzML(self.out_dir, self.out_file)
 
     def _update_progress_bar(self, pbar, scan):
         """
@@ -90,8 +89,17 @@ class Environment(LoggerMixin):
                 msg = '(%.3fs) ms_level=%d N=%d DEW=%d' % (self.mass_spec.time, scan.ms_level, N, DEW)
             else:
                 msg = '(%.3fs) ms_level=%d' % (self.mass_spec.time, scan.ms_level)
-            pbar.update(scan.scan_duration)
+            if pbar.n + scan.scan_duration < pbar.total:
+                pbar.update(scan.scan_duration)
             pbar.set_description(msg)
+
+    def close_progress_bar(self, bar):
+        if bar is not None:
+            try:
+                bar.close()
+            except Exception as e:
+                self.logger.warning('Failed to close progress bar: %s' % str(e))
+                pass
 
     def add_scan(self, scan):
         """
@@ -122,14 +130,22 @@ class Environment(LoggerMixin):
         :param out_file: output filename
         :return: None
         """
-        mzml_filename = Path(out_dir, out_file)
+        if out_file is None: # if no filename provided, just quits
+            return
+        else:
+            if out_dir is None: # no out_dir, use only out_file
+                mzml_filename = Path(out_file)
+            else: # both our_dir and out_file are provided
+                mzml_filename = Path(out_dir, out_file)
+
+        self.logger.debug('Writing mzML file to %s' % mzml_filename)
         try:
             precursor_information = self.controller.precursor_information
         except AttributeError:
             precursor_information = None
         writer = MzmlWriter('my_analysis', self.controller.scans, precursor_information)
         writer.write_mzML(mzml_filename)
-        self.logger.debug('Written %s' % mzml_filename)
+        self.logger.debug('mzML file successfully written!')
 
     def _set_initial_values(self):
         """
@@ -192,17 +208,18 @@ class IAPIEnvironment(Environment):
         self.mass_spec.register_event(IndependentMassSpectrometer.STATE_CHANGED,
                                       self.controller.handle_state_changed)
 
-        self.last_time = time.time()
-        self.stop_time = self.last_time + self.max_time
         self.mass_spec.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING)
         self.mass_spec.run()
+
+        self.last_time = time.time()
+        self.stop_time = self.last_time + self.max_time
 
     def add_scan(self, scan):
         # stop event handling if stop_time has been reached
         if time.time() > self.stop_time:
             self.mass_spec.close()
-            if self.out_dir is not None and self.out_file is not None:
-                self.write_mzML(self.out_dir, self.out_file)
+            self.close_progress_bar(self.pbar)
+            self.write_mzML(self.out_dir, self.out_file)
         else:
             # handle the scan immediately by passing it to the controller
             self.scan_channel.append(scan)
