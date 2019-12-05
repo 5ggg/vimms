@@ -404,7 +404,7 @@ namespace FusionLibrary
             this.Header["IonizationMode"] = "";
             this.Header["ScanRate"] = "";
             this.Header["ScanMode"] = "";
-            this.Header["StartTime"] = scan.ScanStartTime.ToString();
+            this.Header["StartTime"] = (scan.ScanStartTime * 60).ToString();
             this.Header["Scan"] = scan.ScanNumber.ToString();
             this.Header["TIC"] = scan.TotalIonCurrent.ToString();
             this.Header["BasePeakIntensity"] = "";
