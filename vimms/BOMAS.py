@@ -349,5 +349,5 @@ def load_scores(colnames, peak_files,  ms2_dir, dataset_file, ms1_picked_peaks_f
                                      score_param_dict['matching_rt_tol'])
         new_entry = [score, controller.N, controller.rt_tol]
         results.loc[len(results)] = new_entry
-        print(i)
+        logger.debug(i)
     return results

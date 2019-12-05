@@ -1,14 +1,15 @@
 import os
 from collections import defaultdict
 
+import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
 import pylab as plt
-import seaborn as sns
-import matplotlib.patches as mpatches
 import pymzml
+import seaborn as sns
+from loguru import logger
 
-from vimms.Chemicals import UnknownChemical, get_absolute_intensity, get_key
+from vimms.Chemicals import UnknownChemical, get_absolute_intensity
 from vimms.Common import load_obj, PROTON_MASS, find_nearest_index_in_array
 from vimms.MassSpec import FragmentationEvent
 from vimms.Roi import make_roi, RoiToChemicalCreator
@@ -100,7 +101,7 @@ def make_hist(df, col_name, file_name, title):
     gb = df.groupby('filename')
     group_df = gb.get_group(file_name)
     vals = group_df[col_name].values
-    print(vals, len(vals))
+    logger.debug(vals, len(vals))
     _ = plt.hist(vals, bins=100)
     plt.title(title)
     plt.tight_layout()
@@ -156,7 +157,7 @@ def match(chemical_list_1, chemical_list_2, mz_tol, rt_tol, verbose=False):
     for i in range(len(chemical_list_1)):
         to_find = chemical_list_1[i]
         if i % 1000 == 0 and verbose:
-            print('%d/%d found %d' % (i, len(chemical_list_1), len(matches)))
+            logger.debug('%d/%d found %d' % (i, len(chemical_list_1), len(matches)))
         match = find_chem(to_find, min_rts, max_rts, min_mzs, max_mzs, chem_list)
         if match:
             matches[to_find] = match
@@ -187,12 +188,12 @@ def match_peaklist(mz_list_1, rt_list_1, intensity_list_1, mz_list_2, rt_list_2,
 
 def check_found_matches(matches, left_label, right_label, N=20):
     found = [key for key in matches if matches[key] is not None]
-    print('Found %d/%d (%f)' % (len(found), len(matches), len(found) / len(matches)))
+    logger.debug('Found %d/%d (%f)' % (len(found), len(matches), len(found) / len(matches)))
 
-    print('%s\t\t\t\t\t\t%s' % (left_label, right_label))
+    logger.debug('%s\t\t\t\t\t\t%s' % (left_label, right_label))
     for key, value in list(matches.items())[0:N]:
         if value is not None:
-            print('mz %.2f rt %.4f intensity %.4f\tmz %.2f rt %.4f intensity %.4f' % (
+            logger.debug('mz %.2f rt %.4f intensity %.4f\tmz %.2f rt %.4f intensity %.4f' % (
                 key[0], key[1], key[2], value[0], value[1], value[2]))
 
 
@@ -252,13 +253,13 @@ def count_stuff(input_file, min_rt, max_rt):
                     intensities.append(intensity)
                     cumsum_ms2_scans.append((current_scan_rt, count_ms2_scans,))
                 except KeyError:
-                    # print(selected_precursors)
+                    # logger.debug(selected_precursors)
                     pass
 
-    print('Number of ms1 scans =', count_ms1_scans)
-    print('Number of ms2 scans =', count_ms2_scans)
-    print('Total scans =', count_ms1_scans + count_ms2_scans)
-    print('Number of selected precursors =', count_selected_precursors)
+    logger.debug('Number of ms1 scans =', count_ms1_scans)
+    logger.debug('Number of ms2 scans =', count_ms2_scans)
+    logger.debug('Total scans =', count_ms1_scans + count_ms2_scans)
+    logger.debug('Number of selected precursors =', count_selected_precursors)
     return np.array(mzs), np.array(rts), np.array(intensities), np.array(cumsum_ms1_scans), np.array(cumsum_ms2_scans)
 
 
@@ -306,8 +307,8 @@ def plot_num_scans(real_cumsum_ms1, real_cumsum_ms2, simulated_cumsum_ms1, simul
 
 def plot_matched_intensities(matched_intensities, unmatched_intensities, out_file=None):
     plt.figure()
-    temp1 = plt.hist(np.log(matched_intensities), bins = np.linspace(10,20,50), color='blue')
-    temp2 = plt.hist(np.log(unmatched_intensities), bins = np.linspace(10,20,50), color='red')
+    temp1 = plt.hist(np.log(matched_intensities), bins=np.linspace(10, 20, 50), color='blue')
+    temp2 = plt.hist(np.log(unmatched_intensities), bins=np.linspace(10, 20, 50), color='red')
     plt.title('Matched precursor intensities')
 
     blue_patch = mpatches.Patch(color='blue', label='Matched')
@@ -324,7 +325,7 @@ def plot_matched_intensities(matched_intensities, unmatched_intensities, out_fil
 def load_controller(results_dir, experiment_name, N, rt_tol):
     analysis_name = 'experiment_%s_N_%d_rttol_%d' % (experiment_name, N, rt_tol)
     pickle_in = '%s/%s.p' % (results_dir, analysis_name)
-    print('Loading %s' % analysis_name)
+    logger.info('Loading %s' % analysis_name)
     try:
         controller = load_obj(pickle_in)
     except FileNotFoundError:
@@ -396,7 +397,7 @@ def compute_performance_scenario_1(controller, dataset, min_ms1_intensity,
 #     detected_ms1 = df_to_chemicals(P_peaks_df, fullscan_filename)
 #     matches_fullscan = match(detected_ms1, chemicals, matching_mz_tol, matching_rt_tol, verbose=False)
 #     matched_frags = set(matches_fullscan.values())
-#     print('%d/%d %d/%d' % (len(matches_fullscan), len(detected_ms1), len(matched_frags), len(chemicals)))
+#     logger.debug('%d/%d %d/%d' % (len(matches_fullscan), len(detected_ms1), len(matched_frags), len(chemicals)))
 
 #     # ms1 peaks that are also fragmented
 #     positives = []
@@ -483,7 +484,8 @@ def get_frag_events(controller, ms_level):
     :param ms_level: The MS-level (usually 2)
     :return: A dictionary where keys are chemicals and values are a list of fragmentation events
     '''
-    filtered_frag_events = list(filter(lambda x: x.ms_level == ms_level, controller.environment.mass_spec.fragmentation_events))
+    filtered_frag_events = list(
+        filter(lambda x: x.ms_level == ms_level, controller.environment.mass_spec.fragmentation_events))
     chem_to_frag_events = defaultdict(list)
     for frag_event in filtered_frag_events:
         key = frag_event.chem
@@ -555,8 +557,8 @@ def update_matched_status(dataset, matches_fullscan, matches_fragfile):
             else:
                 chem.found_in_fragfile = False
 
-    print('Matched %d/%d in fullscan data, %d/%d in fragmentation data' % (found_in_fullscan, len(dataset),
-                                                                           found_in_fragfile, len(dataset)))
+    logger.info('Matched %d/%d in fullscan data, %d/%d in fragmentation data' % (found_in_fullscan, len(dataset),
+                                                                                 found_in_fragfile, len(dataset)))
 
 
 def compute_pref_rec_f1(tp, fp, fn):
@@ -588,10 +590,10 @@ def calculate_performance(params):
     chemicals_file = params['chemicals_file']
 
     if chemicals_file.endswith('.p'):
-        print('Loading chemicals')
+        logger.info('Loading chemicals')
         chemicals = load_obj(chemicals_file)
     else:
-        print('Extracting chemicals')
+        logger.info('Extracting chemicals')
         chemicals = get_chemicals(chemicals_file, roi_mz_tol, roi_min_ms1_intensity, min_rt, max_rt,
                                   min_length=roi_min_length)
 
@@ -599,17 +601,17 @@ def calculate_performance(params):
         chemicals = np.array(chemicals)
 
     if controller_file.endswith('.p'):
-        print('Loading fragmentation events')
+        logger.info('Loading fragmentation events')
         controller = load_obj(controller_file)
         chem_to_frag_events = None
     else:
-        print('Extracting fragmentation events')
+        logger.info('Extracting fragmentation events')
         controller = None
         precursor_df = get_precursor_info(controller_file)
         chem_to_frag_events = get_chem_to_frag_events(chemicals, precursor_df)
 
     # compute performance under each scenario
-    print('Computing performance under scenario %d' % scenario)
+    logger.info('Computing performance under scenario %d' % scenario)
     tp, fp, fn, prec, rec, f1 = 0, 0, 0, 0, 0, 0
     if scenario == 1:
         tp, fp, fn, prec, rec, f1 = compute_performance_scenario_1(controller, chemicals,
@@ -697,7 +699,7 @@ def evaluate_serial(all_params):
     for params in all_params:
         res = calculate_performance(params)
         results.append(res)
-        print('N=%d rt_tol=%d scenario=%d tp=%d fp=%d fn=%d prec=%.3f rec=%.3f f1=%.3f\n' % res)
+        logger.info('N=%d rt_tol=%d scenario=%d tp=%d fp=%d fn=%d prec=%.3f rec=%.3f f1=%.3f\n' % res)
     result_df = pd.DataFrame(results, columns=['N', 'rt_tol', 'scenario', 'TP', 'FP', 'FN', 'Prec', 'Rec', 'F1'])
     return result_df
 
@@ -707,8 +709,7 @@ def evaluate_parallel(all_params, pushed_dict=None):
     rc = ipp.Client()
     dview = rc[:]  # use all engines​
     with dview.sync_imports():
-        import os
-        from vimms.Common import load_obj
+        pass
 
     if pushed_dict is not None:
         dview.push(pushed_dict)

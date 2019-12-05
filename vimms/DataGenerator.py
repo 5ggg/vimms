@@ -2,30 +2,31 @@ import copy
 import glob
 import os
 import xml.etree.ElementTree
+import zipfile
 
 import numpy as np
 import pandas as pd
 import pylab as plt
 import pymzml
+from loguru import logger
 from sklearn.neighbors import KernelDensity
-import zipfile
 
 from vimms.Chemicals import DatabaseCompound
-from vimms.Common import LoggerMixin, MZ, INTENSITY, RT, N_PEAKS, SCAN_DURATION, MZ_INTENSITY_RT, save_obj
+from vimms.Common import MZ, INTENSITY, RT, N_PEAKS, SCAN_DURATION, MZ_INTENSITY_RT, save_obj
 from vimms.MassSpec import Peak, Scan
 from vimms.SpectralUtils import get_precursor_info
 
 
 def extract_hmdb_metabolite(in_file, delete=True):
-    print('Extracting HMDB metabolites from %s' % in_file)
+    logger.debug('Extracting HMDB metabolites from %s' % in_file)
 
     # if out_file is zipped then extract the xml file inside
     try:
         # extract from zip file
         zf = zipfile.ZipFile(in_file, 'r')
-        metabolite_xml_file = zf.namelist()[0] # assume there's only a single file inside the zip file
+        metabolite_xml_file = zf.namelist()[0]  # assume there's only a single file inside the zip file
         f = zf.open(metabolite_xml_file)
-    except zipfile.BadZipFile: # oops not a zip file
+    except zipfile.BadZipFile:  # oops not a zip file
         zf = None
         f = in_file
 
@@ -53,14 +54,14 @@ def extract_hmdb_metabolite(in_file, delete=True):
         if None not in row:
             compound = DatabaseCompound(row[0], row[1], row[2], row[3], row[4], row[5])
             compounds.append(compound)
-    print('Loaded %d DatabaseCompounds from %s' % (len(compounds), in_file))
+    logger.info('Loaded %d DatabaseCompounds from %s' % (len(compounds), in_file))
 
     f.close()
     if zf is not None:
         zf.close()
 
     if delete:
-        print('Deleting %s' % in_file)
+        logger.info('Deleting %s' % in_file)
         os.remove(in_file)
 
     return compounds
@@ -83,7 +84,7 @@ def get_data_source(mzml_path, filename, xcms_output=None):
 
 
 def get_spectral_feature_database(ds, filename, min_ms1_intensity, min_ms2_intensity, min_rt, max_rt,
-               bandwidth_mz_intensity_rt, bandwidth_n_peaks, out_file=None):
+                                  bandwidth_mz_intensity_rt, bandwidth_n_peaks, out_file=None):
     """
     Generate spectral feature database on the .mzML files that have been loaded into the DataSource
     :param ds: the `DataSource` object that contains loaded .mzML files.
@@ -120,7 +121,7 @@ def filter_df(df, min_ms1_intensity, rt_range, mz_range):
     return df
 
 
-class DataSource(LoggerMixin):
+class DataSource(object):
     """
     A class to load and extract centroided peaks from CSV and mzML files.
     :param min_ms1_intensity: minimum ms1 intensity for filtering
@@ -137,7 +138,7 @@ class DataSource(LoggerMixin):
         self.file_scan_durations = {}  # key: filename, value: a dict with key ms level and value scan durations
 
         # A dictionary to store extracted MS2 scans
-        self.precursor_info = {} # key: filename, value: a dataframe of precursor info
+        self.precursor_info = {}  # key: filename, value: a dataframe of precursor info
 
         # pymzml parameters
         self.ms1_precision = 5e-6
@@ -157,7 +158,7 @@ class DataSource(LoggerMixin):
             fname = os.path.basename(filename)
             if file_name is not None and fname != file_name:
                 continue
-            self.logger.info('Loading %s' % fname)
+            logger.info('Loading %s' % fname)
 
             # TODO: inefficient because we have to parse the mzML file multiple times
             self.file_spectra[fname] = self.extract_all_scans(filename)
@@ -274,7 +275,7 @@ class DataSource(LoggerMixin):
         """
         # if xcms peak picking results are provided, use that instead
         if ms_level == 1 and self.df is not None:
-            self.logger.info('Using values from XCMS peaklist')
+            logger.info('Using values from XCMS peaklist')
 
             # remove rows in the peak picked dataframe that are outside threshold values
             df = filter_df(self.df, min_intensity, [[min_rt, max_rt]], None)
@@ -291,7 +292,7 @@ class DataSource(LoggerMixin):
                 X = df[['mz', 'maxo', 'rt']].values
 
         else:  # else we get the values by reading from the scans in mzML files directly
-            self.logger.info('Using values from scans')
+            logger.info('Using values from scans')
 
             # get spectra from either one file or all files
             if filename is None:  # use all spectra
@@ -415,7 +416,7 @@ class DataSource(LoggerMixin):
             return True
 
 
-class PeakSampler(LoggerMixin):
+class PeakSampler(object):
     """A class to sample peaks from a trained density estimator"""
 
     # TODO: add min intensity threshold here so we don't store everything??!!!
@@ -428,27 +429,27 @@ class PeakSampler(LoggerMixin):
         self.min_ms2_intensity = min_ms2_intensity
         self.filename = filename
         self.plot = plot
-        self.filename_to_N_DEW = filename_to_N_DEW # a dictionary that maps from filename to (N, DEW)
+        self.filename_to_N_DEW = filename_to_N_DEW  # a dictionary that maps from filename to (N, DEW)
 
         # get all the scan dataframes across all files and combine them all
         self.all_ms2_scans = self._extract_ms2_scans(data_source)
-        self.logger.debug('Extracted %d MS2 scans' % len(self.all_ms2_scans))
+        logger.debug('Extracted %d MS2 scans' % len(self.all_ms2_scans))
 
         # compute sum(ms2 peak intensities) / ms1.intensity
         self.intensity_props = self._compute_intensity_props()
 
         # extract scan durations
-        self.file_scan_durations = {} # key: (N, DEW), value: a list of scan durations for (N, DEW)
+        self.file_scan_durations = {}  # key: (N, DEW), value: a list of scan durations for (N, DEW)
         if filename_to_N_DEW is None:
             # no mapping between filename to N is specified, so we just assign it a default key of 0
-            self.logger.debug('Extracting scan durations')
-            N_DEW = (0, 0) # default value if not specified
+            logger.debug('Extracting scan durations')
+            N_DEW = (0, 0)  # default value if not specified
             self.file_scan_durations[N_DEW] = data_source.get_scan_durations(filename)
         else:
             # store the scan durations for the different Ns
             for filename, v in filename_to_N_DEW.items():
                 N, DEW = v
-                self.logger.debug('Extracting scan durations for N=%d DEW=%d from %s' % (N, DEW, filename))
+                logger.debug('Extracting scan durations for N=%d DEW=%d from %s' % (N, DEW, filename))
                 self.file_scan_durations[v] = data_source.get_scan_durations(filename)
 
         # train KDEs for each ms-level
@@ -456,7 +457,7 @@ class PeakSampler(LoggerMixin):
         self.kdes = {}
         self.kernel = 'gaussian'
         self._kde(data_source, filename, 1, bandwidth_mz_intensity_rt, bandwidth_n_peaks, max_data)
-        try: # exceptions if data_source only contains fullscan data but we try to train kde on ms level 2
+        try:  # exceptions if data_source only contains fullscan data but we try to train kde on ms level 2
             self._kde(data_source, filename, 2, bandwidth_mz_intensity_rt, bandwidth_n_peaks, max_data)
         except ValueError:
             pass
@@ -497,12 +498,12 @@ class PeakSampler(LoggerMixin):
                 values = file_scan_durations[key]
 
             msg = 'No scan durations for (N=%d, DEW=%d), using (N=%d, DEW=%d) instead' % (
-            N, DEW, selected[0], selected[1])
-            self.logger.debug(msg)
+                N, DEW, selected[0], selected[1])
+            logger.debug(msg)
 
-        if len(values) == 0: # if values are empty, then we just return an empty array
+        if len(values) == 0:  # if values are empty, then we just return an empty array
             return np.array([])
-        elif len(values) < n_sample: # if not enough values, then return them all
+        elif len(values) < n_sample:  # if not enough values, then return them all
             return values
         else:  # sample scan durations without replacement
             try:
@@ -557,7 +558,7 @@ class PeakSampler(LoggerMixin):
                 ms2_scan_id = idx
                 ms2_mzs = ms2_peaks[:, 0]
                 ms2_rt = ms2_peaks[0, 1]  # all the values are the same, so we can take the first one
-                ms2_intensities = ms2_peaks[:, 2] # TODO: filter by min_ms2_intensity here
+                ms2_intensities = ms2_peaks[:, 2]  # TODO: filter by min_ms2_intensity here
                 ms2_scan = Scan(ms2_scan_id, ms2_mzs, ms2_intensities, ms_level, ms2_rt, parent=parent_peak)
                 spectra.append(ms2_scan)
         return spectra
@@ -610,7 +611,7 @@ class PeakSampler(LoggerMixin):
         return combined_dfs[col_names]
 
     def _compute_intensity_props(self):
-        self.logger.debug('Computing parent intensity proportions')
+        logger.debug('Computing parent intensity proportions')
         intensity_props = []
         for idx, row in self.all_ms2_scans.iterrows():
             parent_intensity = row['ms1_intensity']
@@ -622,7 +623,7 @@ class PeakSampler(LoggerMixin):
         return np.array(intensity_props)
 
     def _kde(self, data_source, filename, ms_level, bandwidth_mz_intensity_rt, bandwidth_n_peaks, max_data):
-        self.logger.debug('Training KDEs for ms_level=%d' % ms_level)
+        logger.debug('Training KDEs for ms_level=%d' % ms_level)
         params = [
             {'data_type': MZ_INTENSITY_RT, 'bandwidth': bandwidth_mz_intensity_rt},
             {'data_type': N_PEAKS, 'bandwidth': bandwidth_n_peaks}
@@ -633,7 +634,7 @@ class PeakSampler(LoggerMixin):
             min_intensity = self.min_ms1_intensity if ms_level == 1 else self.min_ms2_intensity
 
             # get data
-            self.logger.debug('Retrieving %s values from %s' % (data_type, data_source))
+            logger.debug('Retrieving %s values from %s' % (data_type, data_source))
             if data_type == N_PEAKS:
                 X = data_source.get_n_peaks(filename, ms_level, min_intensity=min_intensity,
                                             min_rt=self.min_rt, max_rt=self.max_rt)
@@ -668,7 +669,7 @@ class PeakSampler(LoggerMixin):
     def _plot(self, kde, X, data_type, filename, bandwidth):
         if self.plot:
             if data_type == MZ_INTENSITY_RT:
-                self.logger.debug('3D plotting for %s not implemented' % MZ_INTENSITY_RT)
+                logger.debug('3D plotting for %s not implemented' % MZ_INTENSITY_RT)
             else:
                 fname = 'All' if filename is None else filename
                 title = '%s density estimation for %s - bandwidth %.3f' % (data_type, fname, bandwidth)

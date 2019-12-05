@@ -3,6 +3,7 @@ import os
 
 import numpy as np
 import pandas as pd
+from loguru import logger
 
 from vimms.Common import load_obj
 
@@ -15,7 +16,7 @@ def get_schedule(n, schedule_dir):
             try:
                 schedule = pd.read_csv(last_file)
                 if schedule.shape[0] == 11951:
-                    print("Schedule Found")
+                    logger.debug("Schedule Found")
                     return last_file
             except:
                 pass
@@ -50,7 +51,7 @@ def fragmentation_performance_chemicals(controller_directory, min_acceptable_int
             flatten_rts.extend(l)
         sample_chemical_start_rts_total.append(len(np.unique(np.array(flatten_rts))))
         total_matched_chemicals = sample_chemical_start_rts_total
-        print("Completed Controller", i + 1)
+        logger.debug("Completed Controller", i + 1)
     return chemicals_found_total, total_matched_chemicals
 
 

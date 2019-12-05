@@ -1,41 +1,45 @@
-import os,glob
+import os
 import xml.etree.ElementTree
-import pandas as pd
-import numpy as np
 
-from vimms.Common import PROTON_MASS
+import numpy as np
+import pandas as pd
+from loguru import logger
+
 from vimms.Chemicals import UnknownChemical
-from vimms.PlotsForPaper import get_chem_frag_counts, match, update_matched_status, compute_pref_rec_f1, get_frag_events
+from vimms.Common import PROTON_MASS
+from vimms.PlotsForPaper import get_chem_frag_counts, update_matched_status, compute_pref_rec_f1, get_frag_events
+
 
 def pick_peaks(file_list,
-                xml_template = 'batch_files/PretermPilot2Reduced.xml',
-                output_dir = '/Users/simon/git/pymzmine/output',
-                mzmine_command = '/Users/simon/MZmine-2.40.1/startMZmine_MacOSX.command'):
+               xml_template='batch_files/PretermPilot2Reduced.xml',
+               output_dir='/Users/simon/git/pymzmine/output',
+               mzmine_command='/Users/simon/MZmine-2.40.1/startMZmine_MacOSX.command'):
     et = xml.etree.ElementTree.parse(xml_template)
     # Loop over files in the list (just the firts three for now)
     for filename in file_list:
-        print("Creating xml batch file for {}".format(filename.split(os.sep)[-1]))
+        logger.info("Creating xml batch file for {}".format(filename.split(os.sep)[-1]))
         root = et.getroot()
         for child in root:
             # Set the input filename
             if child.attrib['method'] == 'net.sf.mzmine.modules.rawdatamethods.rawdataimport.RawDataImportModule':
                 for e in child:
                     for g in e:
-                        g.text = filename # raw data file name
+                        g.text = filename  # raw data file name
             # Set the csv export filename
-            if child.attrib['method'] == 'net.sf.mzmine.modules.peaklistmethods.io.csvexport.CSVExportModule': #TODO: edit / remove
+            if child.attrib[
+                'method'] == 'net.sf.mzmine.modules.peaklistmethods.io.csvexport.CSVExportModule':  # TODO: edit / remove
                 for e in child:
                     for g in e:
                         tag = g.tag
                         text = g.text
                         if tag == 'current_file' or tag == 'last_file':
-                            csv_name = os.path.join(output_dir,filename.split(os.sep)[-1].split('.')[0]+'_pp.csv')
+                            csv_name = os.path.join(output_dir, filename.split(os.sep)[-1].split('.')[0] + '_pp.csv')
                             g.text = csv_name
         # write the xml file for this input file
-        new_xml_name = os.path.join(output_dir,filename.split(os.sep)[-1].split('.')[0]+'.xml')
+        new_xml_name = os.path.join(output_dir, filename.split(os.sep)[-1].split('.')[0] + '.xml')
         et.write(new_xml_name)
         # Run mzmine
-        print("Running mzMine for {}".format(filename.split(os.sep)[-1]))
+        logger.info("Running mzMine for {}".format(filename.split(os.sep)[-1]))
         os.system(mzmine_command + ' "{}"'.format(new_xml_name))
 
 
@@ -87,12 +91,14 @@ def mzmine_score(controller, dataset, ms1_chems, ms2_chems, min_ms1_intensity, m
     return tp, fp, fn, prec, rec, f1
 
 
-def controller_score(controller, dataset, ms1_picked_peaks_file, ms2_picked_peaks_file, min_ms1_intensity, matching_mz_tol, matching_rt_tol):
+def controller_score(controller, dataset, ms1_picked_peaks_file, ms2_picked_peaks_file, min_ms1_intensity,
+                     matching_mz_tol, matching_rt_tol):
     # convert to chemicals
     ms1_chems = pick_peaks2chems(ms1_picked_peaks_file)
     ms2_chems = pick_peaks2chems(ms2_picked_peaks_file)
     # calculate score
-    tp, fp, fn, prec, rec, f1 = mzmine_score(controller, dataset, ms1_chems, ms2_chems, min_ms1_intensity, matching_mz_tol, matching_rt_tol)
+    tp, fp, fn, prec, rec, f1 = mzmine_score(controller, dataset, ms1_chems, ms2_chems, min_ms1_intensity,
+                                             matching_mz_tol, matching_rt_tol)
     return f1
 
 
@@ -128,7 +134,7 @@ def mzmine_match(chemical_list_1, chemical_list_2, mz_tol, rt_tol, verbose=False
     for i in range(len(chemical_list_1)):
         to_find = chemical_list_1[i]
         if i % 1000 == 0 and verbose:
-            print('%d/%d found %d' % (i, len(chemical_list_1), len(matches)))
+            logger.debug('%d/%d found %d' % (i, len(chemical_list_1), len(matches)))
         match = mzmine_find_chem(to_find, min_rts, max_rts, min_mzs, max_mzs, chem_list)
         if match:
             matches[to_find] = match

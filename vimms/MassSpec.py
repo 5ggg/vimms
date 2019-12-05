@@ -1,3 +1,4 @@
+import atexit
 import math
 import sys
 import time
@@ -6,8 +7,9 @@ import clr
 import numpy as np
 from clr import ListAssemblies
 from events import Events
+from loguru import logger
 
-from vimms.Common import LoggerMixin, adduct_transformation
+from vimms.Common import adduct_transformation, POSITIVE, NEGATIVE
 
 
 class Peak(object):
@@ -47,8 +49,12 @@ class Scan(object):
     A class to store scan information
     """
 
-    def __init__(self, scan_id, mzs, intensities, ms_level, rt, scan_duration=None, isolation_windows=None,
-                 parent=None, param=None):
+    def __init__(self, scan_id, mzs, intensities, ms_level, rt,
+                 scan_duration=None, isolation_windows=None,
+                 precursor_mz=None, polarity=POSITIVE,
+                 dynamic_exclusion_mz_tol=None, dynamic_exclusion_rt_tol=None,
+                 # TODO: these two parameters do not belong here??!
+                 parent=None):
         """
         Creates a scan
         :param scan_id: current scan id
@@ -58,8 +64,11 @@ class Scan(object):
         :param rt: the retention time of this scan
         :param scan_duration: how long this scan takes, if known.
         :param isolation_windows: the window to isolate precursor peak, if known
+        :param precursor_mz: the precursor m/z, if known
+        :param polarity: the polarity of the scan, either POSITIVE or NEGATIVE
+        :param dynamic_exclusion_mz_tol: dynamic exclusion m/z tolerance (should be removed?)
+        :param dynamic_exclusion_rt_tol: dynamic exclusion RT tolerance (should be removed?)
         :param parent: parent precursor peak, if known
-        :param param: scan parameters, if known
         """
         assert len(mzs) == len(intensities)
         self.scan_id = scan_id
@@ -75,8 +84,11 @@ class Scan(object):
 
         self.scan_duration = scan_duration
         self.isolation_windows = isolation_windows
+        self.precursor_mz = precursor_mz
+        self.polarity = polarity
+        self.dynamic_exclusion_mz_tol = dynamic_exclusion_mz_tol
+        self.dynamic_exclusion_rt_tol = dynamic_exclusion_rt_tol
         self.parent = parent
-        self.param = param
 
     def __repr__(self):
         return 'Scan %d num_peaks=%d rt=%.2f ms_level=%d' % (self.scan_id, self.num_peaks, self.rt, self.ms_level)
@@ -170,7 +182,7 @@ class ExclusionItem(object):
         self.to_rt = to_rt
 
 
-class IndependentMassSpectrometer(LoggerMixin):
+class IndependentMassSpectrometer(object):
     """
     A class that represents (synchronous) mass spectrometry process.
     Independent here refers to how the intensity of each peak in a scan is independent of each other
@@ -180,7 +192,7 @@ class IndependentMassSpectrometer(LoggerMixin):
     ACQUISITION_STREAM_OPENING = 'AcquisitionStreamOpening'
     ACQUISITION_STREAM_CLOSING = 'AcquisitionStreamClosing'
     CAN_ACCEPT_NEXT_CUSTOM_SCAN = 'CanAcceptNextCustomScan'
-    POSSIBLE_PARAMETERS_CHANGED = 'PossibleParametersChanged'
+    STATE_CHANGED = 'StateChanged'
 
     def __init__(self, ionisation_mode, chemicals, peak_sampler, add_noise=False):
         """
@@ -201,11 +213,14 @@ class IndependentMassSpectrometer(LoggerMixin):
         self.environment = None
 
         # the events here follows IAPI events
-        self.events = Events((self.MS_SCAN_ARRIVED, self.ACQUISITION_STREAM_OPENING, self.ACQUISITION_STREAM_CLOSING,))
+        self.events = Events((self.MS_SCAN_ARRIVED, self.ACQUISITION_STREAM_OPENING, self.ACQUISITION_STREAM_CLOSING,
+                              self.CAN_ACCEPT_NEXT_CUSTOM_SCAN, self.STATE_CHANGED,))
         self.event_dict = {
             self.MS_SCAN_ARRIVED: self.events.MsScanArrived,
             self.ACQUISITION_STREAM_OPENING: self.events.AcquisitionStreamOpening,
-            self.ACQUISITION_STREAM_CLOSING: self.events.AcquisitionStreamClosing
+            self.ACQUISITION_STREAM_CLOSING: self.events.AcquisitionStreamClosing,
+            self.CAN_ACCEPT_NEXT_CUSTOM_SCAN: self.events.CanAcceptNextCustomScan,
+            self.STATE_CHANGED: self.events.StateChanged
         }
 
         # the list of all chemicals in the dataset
@@ -286,8 +301,7 @@ class IndependentMassSpectrometer(LoggerMixin):
         Resets the mass spec state so we can reuse it again
         :return: None
         """
-        for key in self.event_dict:  # clear event handlers
-            self.clear(key)
+        self.clear_events()
         self.time = 0
         self.idx = 0
         self.processing_queue = []
@@ -317,7 +331,7 @@ class IndependentMassSpectrometer(LoggerMixin):
             else:
                 e()
 
-    def register(self, event_name, handler):
+    def register_event(self, event_name, handler):
         """
         Register event handler
         :param event_name: the event name
@@ -329,7 +343,11 @@ class IndependentMassSpectrometer(LoggerMixin):
         e = self.event_dict[event_name]
         e += handler  # register a new event handler for e
 
-    def clear(self, event_name):
+    def clear_events(self):
+        for key in self.event_dict:  # clear event handlers
+            self.clear_event(key)
+
+    def clear_event(self, event_name):
         """
         Clears event handler for a given event name
         :param event_name: the event name
@@ -339,6 +357,12 @@ class IndependentMassSpectrometer(LoggerMixin):
             raise ValueError('Unknown event name')
         e = self.event_dict[event_name]
         e.targets = []
+
+    def close(self):
+        logger.debug('Acquisition stream is closing!')
+        self.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING)
+        logger.debug('Unregistering event handlers')
+        self.clear_events()
 
     ####################################################################################################################
     # Private methods
@@ -371,7 +395,7 @@ class IndependentMassSpectrometer(LoggerMixin):
                                                            current_level, next_level)
 
         self.time += current_scan_duration
-        self.logger.info('Time %f Len(queue)=%d' % (self.time, len(self.processing_queue)))
+        logger.info('Time %f Len(queue)=%d' % (self.time, len(self.processing_queue)))
         return current_scan_duration
 
     def _sample_scan_duration(self, current_DEW, current_N, current_level, next_level):
@@ -424,6 +448,9 @@ class IndependentMassSpectrometer(LoggerMixin):
         scan_intensities = []  # all the intensity values in this scan
         ms_level = param.get(ScanParameters.MS_LEVEL)
         isolation_windows = param.get(ScanParameters.ISOLATION_WINDOWS)
+        precursor_mz = param.get(ScanParameters.PRECURSOR)
+        dynamic_exclusion_mz_tol = param.get(ScanParameters.DYNAMIC_EXCLUSION_MZ_TOL)
+        dynamic_exclusion_rt_tol = param.get(ScanParameters.DYNAMIC_EXCLUSION_RT_TOL)
         scan_id = self.idx
 
         # for all chemicals that come out from the column coupled to the mass spec
@@ -462,7 +489,10 @@ class IndependentMassSpectrometer(LoggerMixin):
         # Note: at this point, the scan duration is not set yet because we don't know what the next scan is going to be
         # We will set it later in the get_next_scan() method after we've notified the controller that this scan is produced.
         return Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
-                    scan_duration=None, isolation_windows=isolation_windows, param=param)
+                    scan_duration=None, isolation_windows=isolation_windows,
+                    precursor_mz=precursor_mz, polarity=self.ionisation_mode,
+                    dynamic_exclusion_mz_tol=dynamic_exclusion_mz_tol,
+                    dynamic_exclusion_rt_tol=dynamic_exclusion_rt_tol)
 
     def _get_chem_indices(self, query_rt):
         rtmin_check = self.chrom_min_rts <= query_rt
@@ -569,7 +599,7 @@ class IndependentMassSpectrometer(LoggerMixin):
 
 class IAPIMassSpectrometer(IndependentMassSpectrometer):
 
-    def __init__(self, ionisation_mode, ref_dir, filename=None):
+    def __init__(self, ionisation_mode, ref_dir, filename=None, show_console_logs=True):
         super().__init__(ionisation_mode, [], None, add_noise=False)
 
         # add IAPI .dll location to Python path.
@@ -577,88 +607,84 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             sys.path.append(ref_dir)
 
         # make sure IAPI assemblies can be found
-        assert clr.FindAssembly('IAPI_Assembly') is not None
-        ref = clr.AddReference('IAPI_Assembly')
-        self.logger.debug('AddReference: %s' % ref)
+        assert clr.FindAssembly('FusionLibrary') is not None
+        ref = clr.AddReference('FusionLibrary')
+        logger.debug('AddReference: %s' % ref)
 
         short = list(ListAssemblies(False))
-        self.logger.debug('ListAssemblies: %s', short)
+        logger.debug('ListAssemblies: %s', short)
         assert 'Fusion.API-1.0' in short
         assert 'API-2.0' in short
         assert 'Spectrum-1.0' in short
+        assert 'FusionLibrary' in short
         self.filename = filename
-
-        self.fusionScanContainer = None
-        self.fusionScanControl = None
+        self.show_console_logs = show_console_logs
+        self.fusion_bridge = None
 
     def run(self):
         self.start_time = time.time()
 
-        # if filename is provided, then we create a Fusion Container that loads test mzML data
+        # if self.filename is None, here we initialise fake FusionBridge that reads data from that mzML file
+        # otherwise we will attempt to connect the actual instrument and read the acquisition data
         if self.filename is not None:
-            # initialise fake FusionContainer that reads data from mzML file
-            from IAPI_Assembly import FusionContainer
-            fusionContainer = FusionContainer(self.filename)
+            logger.debug('FusionBridge initialising in DEBUG mode. Input mzML is %s' % self.filename)
+        else:
+            logger.debug('FusionBridge initialising')
 
-        else: # TODO: untested codes to connect to the Fusion
-            clr.AddReference('Thermo.TNG.Factory')
-            from Thermo.Interfaces.FusionAccess_V1 import IFusionInstrumentAccessContainer
-            from Thermo.TNG.Factory import Factory
-            cs = Factory[IFusionInstrumentAccessContainer]
-            fusionContainer = cs.Create([IFusionInstrumentAccessContainer])
+        # noinspection PyUnresolvedReferences
+        from FusionLibrary import FusionBridge
+        self.fusion_bridge = FusionBridge(self.filename, self.show_console_logs)
 
-        # start fusion container
-        self.logger.info('FusionContainer going online')
-        fusionContainer.StartOnlineAccess()
-        while not fusionContainer.ServiceConnected:
-            time.sleep(0.1)
-        self.logger.info('FusionContainer is connected!!')
+        logger.debug('Attaching event handlers')
+        atexit.register(self.fusion_bridge.CloseDown)  # called when the current process exits
+        scan_handler_delegate = FusionBridge.UserScanArriveDelegate(self.step)
+        state_changed_delegate = FusionBridge.UserStateChangedDelegate(self.handle_state_changed)
+        custom_scan_delegate = FusionBridge.UserCreateCustomScanDelegate(self.handle_can_accept_next_custom_scan)
+        self.fusion_bridge.SetEventHandlers(scan_handler_delegate, state_changed_delegate, custom_scan_delegate)
 
-        # get fusion scan container (assume it's the first)
-        fusionAccess = fusionContainer.Get(1)
-        self.fusionScanContainer = fusionAccess.GetMsScanContainer(0)
-
-        # register scan event handler
-        self.fusionScanContainer.MsScanArrived += self.step
-
-        # get scan control interface
-        self.logger.info('Getting scan control interface')
-        try:
-            self.fusionScanControl = fusionAccess.Control.GetScans(False)
-            if self.fusionScanControl is not None:
-                self.logger.info('Obtained scan control interface')
-                self.fusionScanControl.CanAcceptNextCustomScan += self.handleCanAcceptNextCustomScan
-                self.fusionScanControl.PossibleParametersChanged += self.handlePossibleParametersChanged
-                self._try_send_custom_scan()
-        except Exception as e:
-            self.logger.info('Unable to obtain scan control interface: %s' % e)
-
-    def step(self, sender, args):
+    def step(self, iapi_scan):
         # convert IAPI scan object to Vimms scan object
-        iapi_scan = args.GetScan()
-
-        scan_id = self.idx
-        self.time = time.time()
-        scan_time = self.time - self.start_time  # TODO: not correct? This should be the scan start time from the mass spec
+        scan_id = int(iapi_scan.Header['Scan'])
+        scan_time = float(iapi_scan.Header['StartTime'])
         scan_mzs = np.array([c.Mz for c in iapi_scan.Centroids])
         scan_intensities = np.array([c.Intensity for c in iapi_scan.Centroids])
-        ms_level = 1  # TODO: don't know how to extract ms_level from an IAPI scan
+        ms_level = int(iapi_scan.Header['MSOrder'])
+        polarity = POSITIVE if iapi_scan.Header['Polarity'] == '0' else NEGATIVE
 
-        vimms_scan = Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time, scan_duration=None,
-                          isolation_windows=None, param=None)
-        # title = 'idx %d iapi_scan %s %d peaks --> %s' % (
-        #     self.idx, iapi_scan.Header['Scan'], iapi_scan.CentroidCount, vimms_scan)
-        # self.logger.debug(title)
+        precursor_mz = None
+        isolation_windows = None  # specified in Vinny's nested format
+        dynamic_exclusion_mz_tol = None
+        dynamic_exclusion_rt_tol = None
+        parent = None
+
+        # populate ms2 values
+        # TODO: we need to extract this from the IAPI Scan Header or keep track of this internally somehow
+        if ms_level > 1:
+            precursor_mz = None
+            isolation_windows = None  # specified in Vinny's nested format
+            dynamic_exclusion_mz_tol = None
+            dynamic_exclusion_rt_tol = None
+            parent = None
+
+        vimms_scan = Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
+                          scan_duration=None, isolation_windows=isolation_windows,
+                          precursor_mz=None, polarity=POSITIVE,
+                          dynamic_exclusion_mz_tol=None, dynamic_exclusion_rt_tol=None,
+                          parent=None)
+        # precursor_mz=precursor_mz, polarity=polarity,
+        # dynamic_exclusion_mz_tol=dynamic_exclusion_mz_tol, dynamic_exclusion_rt_tol=dynamic_exclusion_rt_tol,
+        # parent=parent)
+
         self.fire_event(self.MS_SCAN_ARRIVED, vimms_scan)
         self.idx += 1
 
-    def handleCanAcceptNextCustomScan(self, sender, args):
-        self.logger.debug('handleCanAcceptNextCustomScan called')
+    def handle_can_accept_next_custom_scan(self, sender, args):
+        logger.debug('handleCanAcceptNextCustomScan called')
         self.fire_event(self.CAN_ACCEPT_NEXT_CUSTOM_SCAN, args)
 
-    def handlePossibleParametersChanged(self, sender, args):
-        self.logger.debug('handlePossibleParametersChanged called')
-        self.fire_event(self.POSSIBLE_PARAMETERS_CHANGED, args)
+    def handle_state_changed(self, sender, args):
+        logger.debug('handleStateChanged called')
+        self.fire_event(self.STATE_CHANGED, args)
 
     def fire_event(self, event_name, arg=None):
         if event_name not in self.event_dict:
@@ -667,7 +693,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         if event_name == self.MS_SCAN_ARRIVED:  # add new scan to spectra send channel
             scan = arg
             self.environment.add_scan(scan)
-        elif event_name == self.CAN_ACCEPT_NEXT_CUSTOM_SCAN or event_name == self.POSSIBLE_PARAMETERS_CHANGED:
+        elif event_name == self.CAN_ACCEPT_NEXT_CUSTOM_SCAN:
             self._try_send_custom_scan()
         else:
             # pretend to fire the event
@@ -683,11 +709,17 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             # get one scan param from the mass spec processing queue and send it over
             param = self._get_param()
             if param is not None:
-                self.logger.debug('Trying to send a custom scan: %s' % param)
+                logger.debug('Trying to send a custom scan: %s' % param)
                 raise NotImplementedError()
             else:
-                self.logger.debug('Got a None custom scan')
+                logger.debug('Got a None custom scan')
 
     def reset(self):
-        # TODO: need to implement later
-        pass
+        super().reset()
+        self.fusion_bridge = None
+
+    def close(self):
+        super().close()
+        logger.debug('Closing fusion bridge')
+        self.fusion_bridge.CloseDown()
+        self.fusion_bridge = None
