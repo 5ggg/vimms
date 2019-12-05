@@ -1,19 +1,21 @@
-import numpy as np
-from tqdm import tqdm
-import math
-import sys
 import copy
+import math
 
-from vimms.Controller import *
-from vimms.MassSpec import *
-from vimms.Common import  POSITIVE, DEFAULT_MS1_SCAN_WINDOW
+import numpy as np
+from loguru import logger
+from tqdm import tqdm
+
+from vimms.Common import POSITIVE
+from vimms.Controller import TreeController
+from vimms.MassSpec import IndependentMassSpectrometer
 
 
-def DiaRestrictedScanner(dataset, ps, dia_design, window_type, kaufmann_design, extra_bins, num_windows=None, pbar=False):
+def DiaRestrictedScanner(dataset, ps, dia_design, window_type, kaufmann_design, extra_bins, num_windows=None,
+                         pbar=False):
     mass_spec = IndependentMassSpectrometer(POSITIVE, dataset, ps)
     controller = TreeController(mass_spec, dia_design, window_type, kaufmann_design, extra_bins, num_windows)
     controller.run(10, 20, pbar)
-    controller.scans[2] = controller.scans[2][0:(controller.scans[1][1].scan_id-1)]
+    controller.scans[2] = controller.scans[2][0:(controller.scans[1][1].scan_id - 1)]
     controller.scans[1] = controller.scans[1][0:2]
     return controller
 
@@ -26,12 +28,15 @@ class DiaAnalyser(object):
         self.chemicals_identified = 0
         self.ms2_matched = 0
         self.entropy = 0
-        self.ms1_range = np.array([0,1000]) #TODO: fix this (ie make it so it can be controller in controller and then here
+        self.ms1_range = np.array(
+            [0, 1000])  # TODO: fix this (ie make it so it can be controller in controller and then here
         self.min_intensity = min_intensity
 
         self.ms1_scan_times = np.array([scan.rt for scan in self.scans[1]])
         self.ms2_scan_times = np.array([scan.rt for scan in self.scans[2]])
-        self.ms1_mzs = [self.controller.mass_spec._get_all_mz_peaks(self.dataset[i], self.dataset[i].rt + 0.01, 1, [[(0, 1000)]])[0][0] for i in range(len(self.dataset))]
+        self.ms1_mzs = [
+            self.controller.mass_spec._get_all_mz_peaks(self.dataset[i], self.dataset[i].rt + 0.01, 1, [[(0, 1000)]])[
+                0][0] for i in range(len(self.dataset))]
         self.ms1_start_rt = np.array([data.rt for data in self.dataset])
         self.ms1_end_rt = np.array([data.rt + data.chromatogram.max_rt for data in self.dataset])
         self.first_scans, self.last_scans = self._get_scan_times()
@@ -46,14 +51,16 @@ class DiaAnalyser(object):
                 num_ms1_options = 0
                 for i in range(len(chemical_location)):
                     mz_location = np.logical_and(np.array(self.ms1_mzs) > chemical_location[i][0],
-                                                          np.array(self.ms1_mzs) <= chemical_location[i][1])
+                                                 np.array(self.ms1_mzs) <= chemical_location[i][1])
                     time_location = np.logical_and(self.ms1_start_rt <= chemical_time[0][1],
-                                                                 self.ms1_end_rt >= chemical_time[0][0])
+                                                   self.ms1_end_rt >= chemical_time[0][0])
                     num_ms1_options += sum(mz_location * time_location)
                 if num_ms1_options == 0:
-                    self.entropy += -len(self.dataset[chem_num].children) * len(self.dataset) * math.log(1 / len(self.dataset))
+                    self.entropy += -len(self.dataset[chem_num].children) * len(self.dataset) * math.log(
+                        1 / len(self.dataset))
                 else:
-                    self.entropy += -len(self.dataset[chem_num].children) * num_ms1_options * math.log(1 / num_ms1_options)
+                    self.entropy += -len(self.dataset[chem_num].children) * num_ms1_options * math.log(
+                        1 / num_ms1_options)
                     if num_ms1_options == 1:
                         self.chemicals_identified += 1
                         self.ms2_matched += len(self.dataset[chem_num].children)
@@ -67,13 +74,17 @@ class DiaAnalyser(object):
         first_scans = [max_time for i in self.dataset]
         last_scans = [max_time for i in self.dataset]
         for chem_num in range(len(self.dataset)):
-            relevant_times = self.ms1_scan_times[(self.ms1_start_rt[chem_num] < self.ms1_scan_times) & (self.ms1_scan_times < self.ms1_end_rt[chem_num])]
+            relevant_times = self.ms1_scan_times[
+                (self.ms1_start_rt[chem_num] < self.ms1_scan_times) & (self.ms1_scan_times < self.ms1_end_rt[chem_num])]
             for time in relevant_times:
-                intensity = self.controller.mass_spec._get_all_mz_peaks(self.dataset[chem_num], time, 1, [[(0,1000)]])[0][1] #TODO: Make MS1 range more general
+                intensity = \
+                    self.controller.mass_spec._get_all_mz_peaks(self.dataset[chem_num], time, 1, [[(0, 1000)]])[0][
+                        1]  # TODO: Make MS1 range more general
                 if intensity > self.min_intensity:
                     first_scans[chem_num] = min(first_scans[chem_num], time)
                     last_scans[chem_num] = time
         return first_scans, last_scans
+
     #
     # def _get_ms1_mzs(self):
     #     # get list of ms1s
@@ -92,7 +103,7 @@ class DiaAnalyser(object):
                                               np.array(self.ms2_scan_times) < self.last_scans[chem_num]))
         chemical_scans = np.array(self.scans[2])[which_scans]
         if chemical_scans.size == 0:
-            possible_locations = [(0,1000)]  # TODO: Make this more general
+            possible_locations = [(0, 1000)]  # TODO: Make this more general
         else:
             locations = [scan.isolation_windows for scan in chemical_scans]
             scan_times = [scan.rt for scan in chemical_scans]
@@ -155,7 +166,6 @@ class RestrictedDiaAnalyser(object):
         self.chemicals_identified.reverse()
         self.ms2_matched.reverse()
         self.scan_num.reverse()
-
 
 
 ############################# ok up to here #####################################
@@ -294,7 +304,7 @@ class Entropy_List(object):
         self.entropy = []
         self.components_determined = []
         if (dia_design != "kaufmann"):
-            sys.exit("Only the 'kaufmann' method can be used with Entropy_List")
+            raise ValueError("Only the 'kaufmann' method can be used with Entropy_List")
         if (kaufmann_design == "tree"):
             self.start_subsample_scans = 2
             self.end_subsample_scans = 7 + extra_bins
@@ -302,7 +312,7 @@ class Entropy_List(object):
             self.start_subsample_scans = 8
             self.end_subsample_scans = 12 + extra_bins
         else:
-            sys.exit("Cannot use Entropy_List with this design. Kaufmann 'nested' or 'tree' only.")
+            raise ValueError("Cannot use Entropy_List with this design. Kaufmann 'nested' or 'tree' only.")
         for i in range(self.start_subsample_scans, self.end_subsample_scans):
             dia = Dia_Methods_Subsample(
                 Dia_Methods(dataset, ms_level, rt, dia_design, window_type, kaufmann_design, extra_bins, range_slack,
@@ -313,8 +323,6 @@ class Entropy_List(object):
             self.components = results.components
 
 
-
-
 class Dia_Methods(object):
     """
     Method for doing DIA on a dataset of ms1 and ms2 peaks. Creates windows and then return attributes of scan results
@@ -322,8 +330,8 @@ class Dia_Methods(object):
 
     def __init__(self, dataset, ms_level, rt, dia_design, window_type, kaufmann_design=None, extra_bins=0,
                  range_slack=0.01, ms1_range=[(None, None)], num_windows=None):
-        dia_windows = Dia_Windows(dataset, dia_design, window_type, kaufmann_design, extra_bins, range_slack, ms1_range,
-                                  num_windows)
+        dia_windows = DiaWindows(dataset, dia_design, window_type, kaufmann_design, extra_bins, range_slack, ms1_range,
+                                 num_windows)
         self.bin_walls = dia_windows.bin_walls
         self.locations = dia_windows.locations
         self.ms1_values = dia_windows.ms1_values
@@ -347,3 +355,99 @@ class Dia_Methods_Subsample(object):
         self.ms1_values = dia_methods.ms1_values
         self.mz_in_scans = dia_methods.mz_in_scans[0:num_scans]
         self.intensities_in_scans = dia_methods.intensities_in_scans[0:num_scans]
+
+
+class DiaWindows(object):
+    """
+    Create DIA window design
+    """
+
+    def __init__(self, ms1_mzs, ms1_range, dia_design, window_type, kaufmann_design, extra_bins, num_windows=None,
+                 range_slack=0.01):
+        ms1_range_difference = ms1_range[0][1] - ms1_range[0][0]
+        # set the number of windows for kaufmann method
+        if dia_design == "kaufmann":
+            num_windows = 64
+        # dont allow extra bins for basic method
+        if dia_design == "basic" and extra_bins > 0:
+            raise ValueError("Cannot have extra bins with 'basic' dia design.")
+        # find bin walls and extra bin walls
+        if window_type == "even":
+            internal_bin_walls = [ms1_range[0][0]]
+            for window_index in range(0, num_windows):
+                internal_bin_walls.append(ms1_range[0][0] + ((window_index + 1) / num_windows) * ms1_range_difference)
+            internal_bin_walls[0] = internal_bin_walls[0] - range_slack * ms1_range_difference
+            internal_bin_walls[-1] = internal_bin_walls[-1] + range_slack * ms1_range_difference
+            internal_bin_walls_extra = None
+            if extra_bins > 0:
+                internal_bin_walls_extra = [ms1_range[0][0]]
+                for window_index in range(0, num_windows * (2 ** extra_bins)):
+                    internal_bin_walls_extra.append(ms1_range[0][0] + (
+                            (window_index + 1) / (num_windows * (2 ** extra_bins))) * ms1_range_difference)
+                internal_bin_walls_extra[0] = internal_bin_walls_extra[0] - range_slack * ms1_range_difference
+                internal_bin_walls_extra[-1] = internal_bin_walls_extra[-1] + range_slack * ms1_range_difference
+        elif window_type == "percentile":
+            internal_bin_walls = np.percentile(ms1_mzs,
+                                               np.arange(0, 100 + 100 / num_windows, 100 / num_windows)).tolist()
+            internal_bin_walls[0] = internal_bin_walls[0] - range_slack * ms1_range_difference
+            internal_bin_walls[-1] = internal_bin_walls[-1] + range_slack * ms1_range_difference
+            internal_bin_walls_extra = None
+            if extra_bins > 0:
+                internal_bin_walls_extra = np.percentile(ms1_mzs,
+                                                         np.arange(0, 100 + 100 / (num_windows * (2 ** extra_bins)),
+                                                                   100 / (num_windows * (2 ** extra_bins)))).tolist()
+                internal_bin_walls_extra[0] = internal_bin_walls_extra[0] - range_slack * ms1_range_difference
+                internal_bin_walls_extra[-1] = internal_bin_walls_extra[-1] + range_slack * ms1_range_difference
+        else:
+            raise ValueError("Incorrect window_type selected. Must be 'even' or 'percentile'.")
+            # convert bin walls and extra bin walls into locations to scan
+        if dia_design == "basic":
+            self.locations = []
+            for window_index in range(0, num_windows):
+                self.locations.append([[(internal_bin_walls[window_index], internal_bin_walls[window_index + 1])]])
+        elif dia_design == "kaufmann":
+            self.locations = KaufmannWindows(internal_bin_walls, internal_bin_walls_extra, kaufmann_design,
+                                             extra_bins).locations
+        else:
+            raise ValueError("Incorrect dia_design selected. Must be 'basic' or 'kaufmann'.")
+
+
+class KaufmannWindows(object):
+    """
+    Method for creating window designs based on Kaufmann paper - https://www.ncbi.nlm.nih.gov/pubmed/27188447
+    """
+
+    def __init__(self, bin_walls, bin_walls_extra, kaufmann_design, extra_bins=0):
+        self.locations = []
+        if kaufmann_design == "nested":
+            n_locations_internal = 4
+            for i in range(0, 8):
+                self.locations.append([[(bin_walls[(0 + i * 8)], bin_walls[(8 + i * 8)])]])
+        elif kaufmann_design == "tree":
+            n_locations_internal = 3
+            self.locations.append([[(bin_walls[0], bin_walls[32])]])
+            self.locations.append([[(bin_walls[32], bin_walls[64])]])
+            self.locations.append([[(bin_walls[16], bin_walls[48])]])
+            self.locations.append([[(bin_walls[8], bin_walls[24]), (bin_walls[40], bin_walls[56])]])
+        else:
+            raise ValueError("not a valid design")
+        locations_internal = [[[]] for i in range(n_locations_internal + extra_bins)]
+        for i in range(0, 4):
+            locations_internal[0][0].append((bin_walls[(4 + i * 16)], bin_walls[(12 + i * 16)]))
+            locations_internal[1][0].append((bin_walls[(2 + i * 16)], bin_walls[(6 + i * 16)]))
+            locations_internal[1][0].append((bin_walls[(10 + i * 16)], bin_walls[(14 + i * 16)]))
+            locations_internal[2][0].append((bin_walls[(1 + i * 16)], bin_walls[(3 + i * 16)]))
+            locations_internal[2][0].append((bin_walls[(9 + i * 16)], bin_walls[(11 + i * 16)]))
+            if kaufmann_design == "nested":
+                locations_internal[3][0].append((bin_walls[(5 + i * 16)], bin_walls[(7 + i * 16)]))
+                locations_internal[3][0].append((bin_walls[(13 + i * 16)], bin_walls[(15 + i * 16)]))
+            else:
+                locations_internal[2][0].append((bin_walls[(5 + i * 16)], bin_walls[(7 + i * 16)]))
+                locations_internal[2][0].append((bin_walls[(13 + i * 16)], bin_walls[(15 + i * 16)]))
+        if extra_bins > 0:  # TODO: fix this
+            for j in range(extra_bins):
+                for i in range(64 * (2 ** j)):
+                    locations_internal[n_locations_internal + j][0].append((bin_walls_extra[int(
+                        0 + i * ((2 ** extra_bins) / (2 ** j)))], bin_walls_extra[int(
+                        ((2 ** extra_bins) / (2 ** j)) / 2 + i * ((2 ** extra_bins) / (2 ** j)))]))
+        self.locations.extend(locations_internal)
