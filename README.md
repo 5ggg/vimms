@@ -58,6 +58,5 @@ Binder
 Publication
 ------------
 
-To reference ViMMS in your work, please cite the following:
-- https://www.biorxiv.org/content/10.1101/744227v1?rss=1 (under review).
->>>>>>> master
+To reference ViMMS in your work, please cite our paper:
+- Wandy, Joe, et al. "In Silico Optimization of Mass Spectrometry Fragmentation Strategies in Metabolomics." Metabolites 9.10 (2019): 219. https://www.mdpi.com/2218-1989/9/10/219
