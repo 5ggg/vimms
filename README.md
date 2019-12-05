@@ -30,7 +30,7 @@ Installation
 Stable version
 
 
-ViMMS requires Python 3+. Unfortunately it is not compatible with Python 2. You can install the stable version of ViMMS using pip:through pypi using pip:
+ViMMS requires Python 3+. Unfortunately it is not compatible with Python 2. You can install the stable version of ViMMS using pip:
 
 ```pip install vimms```
 
@@ -59,4 +59,4 @@ Publication
 ------------
 
 To reference ViMMS in your work, please cite our paper:
-- Wandy, Joe, et al. "In Silico Optimization of Mass Spectrometry Fragmentation Strategies in Metabolomics." Metabolites 9.10 (2019): 219. https://www.mdpi.com/2218-1989/9/10/219
+- Wandy, Joe, et al. "*In Silico Optimization of Mass Spectrometry Fragmentation Strategies in Metabolomics.*" Metabolites 9.10 (2019): 219. https://www.mdpi.com/2218-1989/9/10/219
