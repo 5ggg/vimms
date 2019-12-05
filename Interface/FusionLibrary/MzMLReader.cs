@@ -34,11 +34,9 @@ namespace FusionLibrary
         public MzMLFusionContainer(string filename)
         {
             this.filename = filename;
-            Console.WriteLine("filename is " + filename);
             if (filename != null)
             {
                 SimpleMzMLReader reader = new SimpleMzMLReader(filename);
-                Console.WriteLine("NumSpectra = " + reader.NumSpectra);
                 _spectra = reader.ReadAllSpectra();
             }
         }
@@ -55,7 +53,7 @@ namespace FusionLibrary
 
         public void StartOnlineAccess()
         {
-            Console.WriteLine("Going online!");
+            // Console.WriteLine("Going online!");
         }
 
         IInstrumentAccess IInstrumentAccessContainer.Get(int index)

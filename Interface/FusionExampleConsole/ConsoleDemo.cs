@@ -12,8 +12,10 @@ namespace FusionExampleConsole
             string debugMzML = "C:\\Users\\joewa\\University of Glasgow\\Vinny Davies - CLDS Metabolomics Project\\" +
                 "Data\\multibeers_urine_data\\beers\\fragmentation\\mzML\\Beer_multibeers_1_T10_POS.mzML";
 
+            bool showConsoleLogs = true;
+
             // create a new Fusion bridge
-            FusionBridge fusionBridge = new FusionBridge(debugMzML);
+            FusionBridge fusionBridge = new FusionBridge(debugMzML, showConsoleLogs);
 
             // set event handler when this main process exits
             AppDomain.CurrentDomain.ProcessExit += (sender, EventArgs) =>

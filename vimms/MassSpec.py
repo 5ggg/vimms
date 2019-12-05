@@ -596,7 +596,7 @@ class IndependentMassSpectrometer(LoggerMixin):
 
 class IAPIMassSpectrometer(IndependentMassSpectrometer):
 
-    def __init__(self, ionisation_mode, ref_dir, filename=None):
+    def __init__(self, ionisation_mode, ref_dir, filename=None, show_console_logs=True):
         super().__init__(ionisation_mode, [], None, add_noise=False)
 
         # add IAPI .dll location to Python path.
@@ -615,21 +615,20 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         assert 'Spectrum-1.0' in short
         assert 'FusionLibrary' in short
         self.filename = filename
+        self.show_console_logs = show_console_logs
         self.fusion_bridge = None
 
     def run(self):
         self.start_time = time.time()
 
-        # if filename is provided, then we create a Fusion Container that loads test mzML data
-        # otherwise we connect to the actual instrument
-        self.logger.debug('FusionBridge initialising')
-        from FusionLibrary import FusionBridge
+        # if self.filename is None, here we initialise fake FusionBridge that reads data from that mzML file
+        # otherwise we will attempt to connect the actual instrument and read the acquisition data
         if self.filename is not None:
-            # initialise fake FusionBridge that reads data from mzML file
-            self.fusion_bridge = FusionBridge(self.filename)
-
-        else:  # TODO: untested codes to connect to the Fusion
-            self.fusion_bridge = FusionBridge()
+            self.logger.debug('FusionBridge initialising in DEBUG mode. Input mzML is %s' % self.filename)
+        else:
+            self.logger.debug('FusionBridge initialising')
+        from FusionLibrary import FusionBridge
+        self.fusion_bridge = FusionBridge(self.filename, self.show_console_logs)
 
         self.logger.debug('Attaching event handlers')
         atexit.register(self.fusion_bridge.CloseDown)  # called when the current process exits

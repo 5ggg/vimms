@@ -31,23 +31,24 @@ namespace FusionLibrary
         private UserScanArriveDelegate scanHandler;
         private UserStateChangedDelegate stateHandler;
         private UserCreateCustomScanDelegate customScanHandler;
+        private bool ShowConsoleLogs { get; set; }
 
-        public FusionBridge(string debugMzML = null)
+        public FusionBridge(string debugMzML, bool showConsoleLogs)
         {
             Logs = new List<string>();
-
+            ShowConsoleLogs = showConsoleLogs;
 
             IFusionInstrumentAccessContainer fusionContainer = null;
             if (debugMzML != null) // create fake Fusion container that reads from mzML file
             {
-                WriteLog("FusionBridge constructor called in debug mode", true);
-                WriteLog(string.Format("Reading scans from {0}", debugMzML), true);
+                WriteLog("FusionBridge constructor called in debug mode");
+                WriteLog(string.Format("Reading scans from {0}", debugMzML));
                 fusionContainer = new MzMLFusionContainer(debugMzML);
             }
             else // needs license to connect to the real instrument
             {
                 //// Use the Factory creation method to create a Fusion Access Container
-                WriteLog("FusionBridge constructor called", true);
+                WriteLog("FusionBridge constructor called");
                 fusionContainer = Factory<IFusionInstrumentAccessContainer>.Create();
             }
 
@@ -65,7 +66,7 @@ namespace FusionLibrary
             // From the instrument container, get access to a particular instrument
             InstrumentAccess = fusionContainer.Get(1);
             ScanContainer = InstrumentAccess.GetMsScanContainer(0);
-            WriteLog("Detector class: " + ScanContainer.DetectorClass, true);
+            WriteLog("Detector class: " + ScanContainer.DetectorClass);
 
             // Dump key-value pairs in cs.Values
             WriteLog("Custom scan parameters: ");
@@ -75,11 +76,11 @@ namespace FusionLibrary
             foreach (KeyValuePair<string, string> kvp in cs.Values)
             {
                 string kvpString = string.Format("cs.Values Key = {0}, Value = {1}", kvp.Key, kvp.Value);
-                WriteLog(kvpString, true);
+                WriteLog(kvpString);
             }
 
             // Print instrument state
-            WriteLog("FusionBridge constructor initialised", true);
+            WriteLog("FusionBridge constructor initialised");
             IState state = InstrumentControl.Acquisition.State;
             string msg = string.Format("System mode = {0}, system state = {1}", state.SystemMode,
                 state.SystemState);
@@ -121,13 +122,13 @@ namespace FusionLibrary
             IMsScan scan = e.GetScan();
             if (scan == null)
             {
-                WriteLog("Empty scan", true);
+                WriteLog("Empty scan");
             }
             else
             {
                 WriteLog(string.Format("Received MS Scan Number {0} -- {1} peaks",
                 scan.Header["Scan"],
-                scan.CentroidCount), true);
+                scan.CentroidCount));
 
                 // dump header
                 foreach (KeyValuePair<string, string> kvp in scan.Header)
@@ -146,7 +147,7 @@ namespace FusionLibrary
             IState state = e.State;
             string msg = string.Format("System mode = {0}, system state = {1}", state.SystemMode,
                 state.SystemState);
-            WriteLog(msg, true);
+            WriteLog(msg);
 
             // run user state changed handler
             stateHandler(state);
@@ -154,18 +155,18 @@ namespace FusionLibrary
 
         private void CreateCustomScanHandlerHandler(object sender, EventArgs e)
         {
-            WriteLog("UserCreateCustomScan starts", true);
+            WriteLog("UserCreateCustomScan starts");
             customScanHandler();
-            WriteLog("UserCreateCustomScan ends", true);
+            WriteLog("UserCreateCustomScan ends");
         }
 
         public void DumpPossibleParameters()
         {
-            WriteLog("DumpPossibleParameters", true);
+            WriteLog("DumpPossibleParameters");
             IParameterDescription[] parameters = ScanControl.PossibleParameters;
             if (parameters.Length == 0)
             {
-                WriteLog("No possible IScans parameters known.", true);
+                WriteLog("No possible IScans parameters known.");
             }
 
             WriteLog("ScanControl parameters:");
@@ -188,7 +189,7 @@ namespace FusionLibrary
         public void CreateCustomScan(double precursorMass, double isolationWidth, double collisionEnergy, int msLevel,
             string polarity = "Positive", double firstMass = 50, double lastMass = 600, double singleProcessingDelay = 0.50D)
         {
-            WriteLog("StartNewScan called", true);
+            WriteLog("StartNewScan called");
             if (ScanControl.PossibleParameters.Length > 0)
             {
                 ICustomScan cs = ScanControl.CreateCustomScan();
@@ -234,29 +235,29 @@ namespace FusionLibrary
                 {
                     if (!ScanControl.SetCustomScan(cs))
                     {
-                        WriteLog("New custom scan has not been placed, connection to service broken!!", true);
+                        WriteLog("New custom scan has not been placed, connection to service broken!!");
                     }
                     else
                     {
-                        WriteLog("Placed a new custom scan(" + cs.RunningNumber + ") for precursor mz=" + cs.Values["PrecursorMass"], true);
+                        WriteLog("Placed a new custom scan(" + cs.RunningNumber + ") for precursor mz=" + cs.Values["PrecursorMass"]);
                     }
                 }
                 catch (Exception e)
                 {
-                    WriteLog("Error placing a new scan: " + e.Message, true);
+                    WriteLog("Error placing a new scan: " + e.Message);
                 }
             }
             else
             {
-                WriteLog("New custom scan has not been placed, no parameters available!!", true);
+                WriteLog("New custom scan has not been placed, no parameters available!!");
             }
         }
 
-        public void WriteLog(string msg, bool print = false)
+        public void WriteLog(string msg)
         {
             string msgWithTimestamp = string.Format("[{0:HH:mm:ss.ffff}] {1}", DateTime.Now, msg);
             Logs.Add(msgWithTimestamp);
-            if (print)
+            if (ShowConsoleLogs)
             {
                 Console.WriteLine(msgWithTimestamp);
             }
@@ -266,10 +267,10 @@ namespace FusionLibrary
         {
             if (Logs.Count > 0)
             {
-                WriteLog("Removing event handlers", true);
+                WriteLog("Removing event handlers");
                 RemoveEventHandlers();
 
-                WriteLog("Goodbye Cruel World", true);
+                WriteLog("Goodbye Cruel World");
 
                 // write log files to Desktop
                 string docPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
