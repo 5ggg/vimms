@@ -187,7 +187,6 @@ class IndependentMassSpectrometer(object):
     MS_SCAN_ARRIVED = 'MsScanArrived'
     ACQUISITION_STREAM_OPENING = 'AcquisitionStreamOpening'
     ACQUISITION_STREAM_CLOSING = 'AcquisitionStreamClosing'
-    CAN_ACCEPT_NEXT_CUSTOM_SCAN = 'CanAcceptNextCustomScan'
     STATE_CHANGED = 'StateChanged'
 
     def __init__(self, ionisation_mode, chemicals, peak_sampler, add_noise=False):
@@ -210,12 +209,11 @@ class IndependentMassSpectrometer(object):
 
         # the events here follows IAPI events
         self.events = Events((self.MS_SCAN_ARRIVED, self.ACQUISITION_STREAM_OPENING, self.ACQUISITION_STREAM_CLOSING,
-                              self.CAN_ACCEPT_NEXT_CUSTOM_SCAN, self.STATE_CHANGED,))
+                              self.STATE_CHANGED,))
         self.event_dict = {
             self.MS_SCAN_ARRIVED: self.events.MsScanArrived,
             self.ACQUISITION_STREAM_OPENING: self.events.AcquisitionStreamOpening,
             self.ACQUISITION_STREAM_CLOSING: self.events.AcquisitionStreamClosing,
-            self.CAN_ACCEPT_NEXT_CUSTOM_SCAN: self.events.CanAcceptNextCustomScan,
             self.STATE_CHANGED: self.events.StateChanged
         }
 
@@ -315,17 +313,13 @@ class IndependentMassSpectrometer(object):
         if event_name not in self.event_dict:
             raise ValueError('Unknown event name')
 
+        # pretend to fire the event
+        # actually here we just runs the event handler method directly
         e = self.event_dict[event_name]
-        if event_name == self.MS_SCAN_ARRIVED:  # if it's a scan event, then pass the scan to the controller
-            scan = arg
-            self.environment.add_scan(scan)
+        if arg is not None:
+            e(arg)
         else:
-            # pretend to fire the event
-            # actually here we just runs the event handler method directly
-            if arg is not None:
-                e(arg)
-            else:
-                e()
+            e()
 
     def register_event(self, event_name, handler):
         """
@@ -631,9 +625,10 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         logger.debug('Attaching event handlers')
         atexit.register(self.fusion_bridge.CloseDown)  # called when the current process exits
         scan_handler_delegate = FusionBridge.UserScanArriveDelegate(self.step)
-        state_changed_delegate = FusionBridge.UserStateChangedDelegate(self.handle_state_changed)
-        custom_scan_delegate = FusionBridge.UserCreateCustomScanDelegate(self.handle_can_accept_next_custom_scan)
+        state_changed_delegate = FusionBridge.UserStateChangedDelegate(self.state_changed_handler)
+        custom_scan_delegate = FusionBridge.UserCreateCustomScanDelegate(self.custom_scan_handler)
         self.fusion_bridge.SetEventHandlers(scan_handler_delegate, state_changed_delegate, custom_scan_delegate)
+        self._send_custom_scan()  # send the initial custom scan to start the custom scan generation process
 
     def step(self, iapi_scan):
         # convert IAPI scan object to Vimms scan object
@@ -655,9 +650,9 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         if ms_level > 1:
             precursor_mz = None
             isolation_windows = None  # specified in Vinny's nested format
-            scan_params = None # TODO: the scan parameters used to generate this scan. We should keep track of this
-            dynamic_exclusion_mz_tol = None # TODO: can be extracted from the scan_params
-            dynamic_exclusion_rt_tol = None # TODO: can be extracted from the scan_params
+            scan_params = None  # TODO: the scan parameters used to generate this scan. We should keep track of this
+            dynamic_exclusion_mz_tol = None  # TODO: can be extracted from the scan_params
+            dynamic_exclusion_rt_tol = None  # TODO: can be extracted from the scan_params
             parent = None
 
         vimms_scan = Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
@@ -668,40 +663,13 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         self.fire_event(self.MS_SCAN_ARRIVED, vimms_scan)
         self.idx += 1
 
-    def handle_can_accept_next_custom_scan(self, sender, args):
-        logger.debug('handleCanAcceptNextCustomScan called')
-        self.fire_event(self.CAN_ACCEPT_NEXT_CUSTOM_SCAN, args)
+    def custom_scan_handler(self):
+        # logger.debug('custom_scan_handler called')
+        self._send_custom_scan()
 
-    def handle_state_changed(self, sender, args):
-        logger.debug('handleStateChanged called')
-        self.fire_event(self.STATE_CHANGED, args)
-
-    def fire_event(self, event_name, arg=None):
-        if event_name not in self.event_dict:
-            raise ValueError('Unknown event name')
-
-        if event_name == self.MS_SCAN_ARRIVED:  # add new scan to spectra send channel
-            scan = arg
-            self.environment.add_scan(scan)
-        elif event_name == self.CAN_ACCEPT_NEXT_CUSTOM_SCAN:
-            self.send_custom_scan()
-        else:
-            # pretend to fire the event
-            # actually here we just runs the event handler method directly
-            e = self.event_dict[event_name]
-            if arg is not None:
-                e(arg)
-            else:
-                e()
-
-    def send_custom_scan(self):
-        """
-        Translates the last ScanParameter object in the processing queue to a custom scan using FusionBridge
-        and sends it over to the actual mass spec.
-        """
-        # get one scan param from the mass spec processing queue and send it over
-        param = self._get_param()
-        logger.debug('Sending param ' + str(param))
+    def state_changed_handler(self, state):
+        logger.debug('state_changed_handler called')
+        self.fire_event(self.STATE_CHANGED, state)
 
     def reset(self):
         super().reset()
@@ -712,3 +680,25 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         logger.debug('Closing fusion bridge')
         self.fusion_bridge.CloseDown()
         self.fusion_bridge = None
+
+    def _send_custom_scan(self):
+        """
+        Translates the last ScanParameter object in the processing queue to a custom scan using FusionBridge
+        and sends it over to the actual mass spec.
+        """
+        # get one scan param from the mass spec processing queue and send it over
+        param = self._get_param()
+        if param is not None:
+            ms_level = param.get(ScanParameters.MS_LEVEL)
+            precursor_mass = 0.0
+            if ms_level == 2:
+                logger.debug('Sending a custom scan with parameters ' + str(param))
+                precursor_mass = param.get(ScanParameters.PRECURSOR).precursor_mz
+            isolation_width = 0.7
+            collision_energy = 35.0
+            polarity = POSITIVE
+            first_mass = 50.0
+            last_mass = 600.0
+            single_processing_delay = 0.50
+            self.fusion_bridge.CreateCustomScan(precursor_mass, isolation_width, collision_energy, ms_level,
+                                                polarity, first_mass, last_mass, single_processing_delay)

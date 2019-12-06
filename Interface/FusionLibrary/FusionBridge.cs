@@ -39,7 +39,7 @@ namespace FusionLibrary
             ShowConsoleLogs = showConsoleLogs;
 
             IFusionInstrumentAccessContainer fusionContainer = null;
-            if (debugMzML != null) // create fake Fusion container that reads from mzML file
+            if (!String.IsNullOrEmpty(debugMzML)) // create fake Fusion container that reads from mzML file
             {
                 WriteLog("FusionBridge constructor called in debug mode");
                 WriteLog(string.Format("Reading scans from {0}", debugMzML));
@@ -88,7 +88,7 @@ namespace FusionLibrary
 
         }
 
-        public void SetEventHandlers(UserScanArriveDelegate scanArriveDelegate, 
+        public void SetEventHandlers(UserScanArriveDelegate scanArriveDelegate,
             UserStateChangedDelegate stateChangedDelegate, UserCreateCustomScanDelegate customScanDelegate)
         {
             // if not null, save user-provided event handlers and attach the appropriate event handlers
@@ -155,9 +155,9 @@ namespace FusionLibrary
 
         private void CreateCustomScanHandlerHandler(object sender, EventArgs e)
         {
-            WriteLog("UserCreateCustomScan starts");
+            WriteLog("customScanHandler starts");
             customScanHandler();
-            WriteLog("UserCreateCustomScan ends");
+            WriteLog("customScanHandler ends");
         }
 
         public void DumpPossibleParameters()
@@ -187,9 +187,15 @@ namespace FusionLibrary
         }
 
         public void CreateCustomScan(double precursorMass, double isolationWidth, double collisionEnergy, int msLevel,
-            string polarity = "Positive", double firstMass = 50, double lastMass = 600, double singleProcessingDelay = 0.50D)
+            string polarity, double firstMass, double lastMass, double singleProcessingDelay)
         {
-            WriteLog("StartNewScan called");
+            WriteLog(String.Format("StartNewScan called -- precursorMass {0} isolationWidth {1} collisionEnergy {2} msLevel {3} " +
+                "polarity {4} firstMass {5} lastMass {6} singleProcessingDelay {7}",
+                precursorMass, isolationWidth, collisionEnergy, msLevel, polarity, firstMass, lastMass, singleProcessingDelay));
+
+            // TODO: validate input 
+
+
             if (ScanControl.PossibleParameters.Length > 0)
             {
                 ICustomScan cs = ScanControl.CreateCustomScan();
@@ -204,18 +210,16 @@ namespace FusionLibrary
                 cs.Values["LastMass"] = lastMass.ToString();
                 cs.Values["Analyzer"] = "Orbitrap";
                 cs.Values["Polarity"] = polarity;
+                cs.Values["IsolationWidth"] = isolationWidth.ToString();
+                cs.Values["PrecursorMass"] = precursorMass.ToString();
                 if (msLevel == 1)
                 {
                     cs.Values["ScanType"] = "Full";
-                    cs.Values["IsolationWidth"] = "0.7";
-                    cs.Values["PrecursorMass"] = "";
                     cs.Values["OrbitrapResolution"] = "120000";
                 }
                 else
                 {
                     cs.Values["ScanType"] = "MSn";
-                    cs.Values["IsolationWidth"] = isolationWidth.ToString();
-                    cs.Values["PrecursorMass"] = precursorMass.ToString();
                     cs.Values["OrbitrapResolution"] = "7500";
                 }
                 cs.Values["ActivationType"] = "HCD";
@@ -239,7 +243,14 @@ namespace FusionLibrary
                     }
                     else
                     {
-                        WriteLog("Placed a new custom scan(" + cs.RunningNumber + ") for precursor mz=" + cs.Values["PrecursorMass"]);
+                        if (cs.Values["ScanType"] == "Full")
+                        {
+                            WriteLog("Placed a new custom fullscan (" + cs.RunningNumber + ")");
+                        }
+                        else if (cs.Values["ScanType"] == "MSn")
+                        {
+                            WriteLog("Placed a new custom MSn scan (" + cs.RunningNumber + ") for precursor mz=" + cs.Values["PrecursorMass"]);
+                        }
                     }
                 }
                 catch (Exception e)
