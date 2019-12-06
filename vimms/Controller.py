@@ -451,7 +451,7 @@ class RoiController(TopNController):
 
     def __init__(self, ionisation_mode, isolation_window, mz_tol, min_ms1_intensity, min_roi_intensity,
                  min_roi_length,
-                 score_method, N=None, rt_tol=math.inf, score_params=None):
+                 score_method, N=None, rt_tol=10, score_params=None):
         super().__init__(ionisation_mode, N, isolation_window, mz_tol, rt_tol, min_ms1_intensity)
 
         # ROI stuff
@@ -495,13 +495,11 @@ class RoiController(TopNController):
                 intensity = self.current_roi_intensities[i]
 
                 # stopping criteria is done based on the scores
-                if scores[i] <= 0:
+                if scores[i] <= 0: # TODO: this takes ouit
                     logger.debug('Time %f Top-%d ions have been selected' % (rt, self.N))
                     break
 
                 # updated fragmented list and times
-                if self.live_roi_fragmented[i]:
-                    continue
                 self.live_roi_fragmented[i] = True
                 self.live_roi_last_rt[i] = rt  # TODO: May want to update this to use the time of the MS2 scan
 
@@ -570,7 +568,9 @@ class RoiController(TopNController):
         if score_method == "Top N":
             scores = np.log(self.current_roi_intensities)  # log intensities
             scores *= (np.log(self.current_roi_intensities) > np.log(self.min_ms1_intensity))  # intensity filter
-            scores *= (1 - np.array(self.live_roi_fragmented).astype(int))  # exclusion time filter
+            time_filter = (1 - np.array(self.live_roi_fragmented).astype(int))
+            time_filter[time_filter==0] = ((self.last_ms1_scan.rt - np.array(self.live_roi_last_rt)[time_filter==0]) > self.rt_tol)
+            scores *= time_filter
             if len(scores) > self.N:  # number of fragmentation events filter
                 scores[scores.argsort()[:(len(scores) - self.N)]] = 0
         elif score_method == "Regression Top N":
