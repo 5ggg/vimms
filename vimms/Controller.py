@@ -1,6 +1,5 @@
 import bisect
 import math
-import sys
 from collections import defaultdict
 
 import numpy as np
@@ -20,7 +19,7 @@ class Precursor(object):
         self.precursor_charge = precursor_charge
         self.precursor_scan_id = precursor_scan_id
 
-    def __str__(self):
+    def __repr__(self):
         return 'Precursor mz %f intensity %f charge %d scan_id %d' % (
             self.precursor_mz, self.precursor_intensity, self.precursor_charge, self.precursor_scan_id)
 
@@ -61,9 +60,6 @@ class Controller(object):
         return new_tasks
 
     def update_state_after_scan(self, last_scan):
-        raise NotImplementedError()
-
-    def create_custom_scan(self):
         raise NotImplementedError()
 
     def handle_state_changed(self, state):
@@ -110,9 +106,6 @@ class IdleController(Controller):
     def update_state_after_scan(self, last_scan):
         pass
 
-    def create_custom_scan(self):
-        pass
-
     def handle_state_changed(self, state):
         pass
 
@@ -141,9 +134,6 @@ class SimpleMs1Controller(Controller):
         return new_tasks
 
     def update_state_after_scan(self, last_scan):
-        pass
-
-    def create_custom_scan(self):
         pass
 
     def handle_state_changed(self, state):
@@ -227,10 +217,8 @@ class TopNController(Controller):
         self._add_precursor_info(last_scan)
         self._manage_dynamic_exclusion_list(last_scan)
 
-    def create_custom_scan(self):
-        pass
-
     def handle_state_changed(self, state):
+        logger.info('State changed!')
         pass
 
     def reset(self):
@@ -428,9 +416,6 @@ class HybridController(TopNController):
     def update_state_after_scan(self, last_scan):
         super().update_state_after_scan(last_scan)
 
-    def create_custom_scan(self):
-        pass
-
     def handle_state_changed(self, state):
         pass
 
@@ -516,9 +501,6 @@ class RoiController(TopNController):
         # add precursor info based on the current scan produced
         # NOT doing the dynamic exclusion window thing
         self._add_precursor_info(last_scan)
-
-    def create_custom_scan(self):
-        pass
 
     def handle_state_changed(self, state):
         pass

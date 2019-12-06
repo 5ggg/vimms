@@ -41,12 +41,18 @@ namespace FusionExampleConsole
             double isolationWidth = 0.7;
             double collisionEnergy = 35;
             double precursorMass = startMz;
+            int msLevel = 2;
+            string polarity = "Positive";
+            double firstMass = 50.0;
+            double lastMass = 600.0;
+            double singleProcessingDelay = 0.50;
             FusionBridge.UserCreateCustomScanDelegate userCreateCustomScanHandler = () =>
             {
                 if (precursorMass < endMz)
                 {
                     precursorMass += 0.02;
-                    fusionBridge.CreateCustomScan(precursorMass, isolationWidth, collisionEnergy, 2);
+                    fusionBridge.CreateCustomScan(precursorMass, isolationWidth, collisionEnergy, msLevel, polarity, 
+                        firstMass, lastMass, singleProcessingDelay);
                 }
             };
 
@@ -54,7 +60,8 @@ namespace FusionExampleConsole
             fusionBridge.SetEventHandlers(userScanHandler, userStateChangeHandler, userCreateCustomScanHandler);
 
             // send the initial custom scan
-            fusionBridge.CreateCustomScan(precursorMass, isolationWidth, collisionEnergy, 2);
+            fusionBridge.CreateCustomScan(precursorMass, isolationWidth, collisionEnergy, msLevel, polarity,
+                firstMass, lastMass, singleProcessingDelay);
             Console.ReadLine();
 
         }

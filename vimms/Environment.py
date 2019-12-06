@@ -4,7 +4,7 @@ from pathlib import Path
 from loguru import logger
 from tqdm import tqdm
 
-from vimms.Common import DEFAULT_MS1_SCAN_WINDOW
+from vimms.Common import DEFAULT_MS1_SCAN_WINDOW, POSITIVE
 from vimms.Controller import TopNController, HybridController
 from vimms.MassSpec import ScanParameters, IndependentMassSpectrometer
 from vimms.MzmlWriter import MzmlWriter
@@ -20,8 +20,6 @@ class Environment(object):
         :param max_time: end time
         :param progress_bar: True if a progress bar is to be shown
         """
-        logger.info('Initialising environment with mass spec %s and controller %s' %
-                    (mass_spec, controller))
         self.scan_channel = []
         self.task_channel = []
         self.mass_spec = mass_spec
@@ -46,13 +44,11 @@ class Environment(object):
         self._set_initial_values()
 
         # register event handlers from the controller
-        self.mass_spec.register_event(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.controller.handle_scan)
+        self.mass_spec.register_event(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.add_scan)
         self.mass_spec.register_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING,
                                       self.controller.handle_acquisition_open)
         self.mass_spec.register_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING,
                                       self.controller.handle_acquisition_closing)
-        self.mass_spec.register_event(IndependentMassSpectrometer.CAN_ACCEPT_NEXT_CUSTOM_SCAN,
-                                      self.controller.create_custom_scan)
         self.mass_spec.register_event(IndependentMassSpectrometer.STATE_CHANGED,
                                       self.controller.handle_state_changed)
 
@@ -202,9 +198,11 @@ class IAPIEnvironment(Environment):
         self._set_initial_values()
 
         # register event handlers from the controller
-        self.mass_spec.register_event(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.controller.handle_scan)
-        self.mass_spec.register_event(IndependentMassSpectrometer.CAN_ACCEPT_NEXT_CUSTOM_SCAN,
-                                      self.controller.create_custom_scan)
+        self.mass_spec.register_event(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.add_scan)
+        self.mass_spec.register_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING,
+                                      self.controller.handle_acquisition_open)
+        self.mass_spec.register_event(IndependentMassSpectrometer.ACQUISITION_STREAM_CLOSING,
+                                      self.controller.handle_acquisition_closing)
         self.mass_spec.register_event(IndependentMassSpectrometer.STATE_CHANGED,
                                       self.controller.handle_state_changed)
 
