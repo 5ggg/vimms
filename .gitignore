@@ -144,3 +144,4 @@ Interface/FusionExampleConsole/obj/
 Interface/FusionLibrary/bin/Debug/
 Interface/FusionLibrary/obj/Debug/
 Interface/FusionLibrary/obj/
+tests/integration/results/

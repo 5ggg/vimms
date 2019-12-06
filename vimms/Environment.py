@@ -20,8 +20,6 @@ class Environment(object):
         :param max_time: end time
         :param progress_bar: True if a progress bar is to be shown
         """
-        logger.info('Initialising environment with mass spec %s and controller %s' %
-                    (mass_spec, controller))
         self.scan_channel = []
         self.task_channel = []
         self.mass_spec = mass_spec
