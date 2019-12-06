@@ -78,13 +78,19 @@ class Roi(object):
 # mean_mz of the RoI. E.g. if mz_tol = 1 Da, then it looks
 # plus and minus 1Da
 def match(mz, roi_list, mz_tol, mz_units='Da'):
+    print( )
+    print('mz', mz)
+    print('len', len(roi_list))
+    print('roi_list', roi_list)
     if len(roi_list) == 0:
         return None
     pos = bisect.bisect_right(roi_list, mz)
+    print('pos', pos)
     if pos == len(roi_list):
         return None
     if pos == 0:
         return None
+    print("here")
 
     if mz_units == 'Da':
         dist_left = mz.get_mean_mz() - roi_list[pos - 1].get_mean_mz()
@@ -104,6 +110,52 @@ def match(mz, roi_list, mz_tol, mz_units='Da'):
             return roi_list[pos]
     else:
         return None
+
+
+def match(mz, roi_list, mz_tol, mz_units='Da'):
+    if len(roi_list) == 0:
+        return None
+    pos = bisect.bisect_right(roi_list, mz)
+
+    if pos == len(roi_list):
+        if mz_units == 'Da':
+            dist_left = mz.get_mean_mz() - roi_list[pos - 1].get_mean_mz()
+        else:  # ppm
+            dist_left = 1e6 * (mz.get_mean_mz() - roi_list[pos - 1].get_mean_mz()) / mz.get_mean_mz()
+
+        if dist_left < mz_tol:
+            return roi_list[pos - 1]
+        else:
+            return None
+    elif pos == 0:
+        if mz_units == 'Da':
+            dist_right = roi_list[pos].get_mean_mz() - mz.get_mean_mz()
+        else:  # ppm
+            dist_right = 1e6 * (roi_list[pos].get_mean_mz() - mz.get_mean_mz()) / mz.get_mean_mz()
+
+        if dist_right < mz_tol:
+            return roi_list[pos]
+        else:
+            return None
+    else:
+        if mz_units == 'Da':
+            dist_left = mz.get_mean_mz() - roi_list[pos - 1].get_mean_mz()
+            dist_right = roi_list[pos].get_mean_mz() - mz.get_mean_mz()
+        else:  # ppm
+            dist_left = 1e6 * (mz.get_mean_mz() - roi_list[pos - 1].get_mean_mz()) / mz.get_mean_mz()
+            dist_right = 1e6 * (roi_list[pos].get_mean_mz() - mz.get_mean_mz()) / mz.get_mean_mz()
+
+        if dist_left < mz_tol and dist_right > mz_tol:
+            return roi_list[pos - 1]
+        elif dist_left > mz_tol and dist_right < mz_tol:
+            return roi_list[pos]
+        elif dist_left < mz_tol and dist_right < mz_tol:
+            if dist_left <= dist_right:
+                return roi_list[pos - 1]
+            else:
+                return roi_list[pos]
+        else:
+            return None
 
 
 def roi_correlation(roi1, roi2, min_rt_point_overlap=5, method='pearson'):
