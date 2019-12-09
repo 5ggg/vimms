@@ -273,7 +273,7 @@ class TopNController(Controller):
         :return: None
         """
         current_time = scan.rt + scan.scan_duration
-        precursor = scan.precursor_mz
+        precursor = scan.scan_params.get(ScanParameters.PRECURSOR)
         if scan.ms_level >= 2 and precursor is not None:
             # add dynamic exclusion item to the exclusion list to prevent the same precursor ion being fragmented
             # multiple times in the same mz and rt window

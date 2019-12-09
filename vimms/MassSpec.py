@@ -50,9 +50,7 @@ class Scan(object):
     """
 
     def __init__(self, scan_id, mzs, intensities, ms_level, rt,
-                 scan_duration=None, isolation_windows=None,
-                 precursor_mz=None, polarity=POSITIVE,
-                 scan_params=None, parent=None):
+                 scan_duration=None, scan_params=None, parent=None):
         """
         Creates a scan
         :param scan_id: current scan id
@@ -61,9 +59,6 @@ class Scan(object):
         :param ms_level: the ms level of this scan
         :param rt: the retention time of this scan
         :param scan_duration: how long this scan takes, if known.
-        :param isolation_windows: the window to isolate precursor peak, if known
-        :param precursor_mz: the precursor m/z, if known
-        :param polarity: the polarity of the scan, either POSITIVE or NEGATIVE
         :param scan_params: the parameters used to generate this scan, if known
         :param parent: parent precursor peak, if known
         """
@@ -80,9 +75,6 @@ class Scan(object):
         self.num_peaks = len(mzs)
 
         self.scan_duration = scan_duration
-        self.isolation_windows = isolation_windows
-        self.precursor_mz = precursor_mz
-        self.polarity = polarity
         self.scan_params = scan_params
         self.parent = parent
 
@@ -477,9 +469,7 @@ class IndependentMassSpectrometer(object):
         # Note: at this point, the scan duration is not set yet because we don't know what the next scan is going to be
         # We will set it later in the get_next_scan() method after we've notified the controller that this scan is produced.
         return Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
-                    scan_duration=None, isolation_windows=isolation_windows,
-                    precursor_mz=precursor_mz, polarity=self.ionisation_mode,
-                    scan_params=param)
+                    scan_duration=None, scan_params=param)
 
     def _get_chem_indices(self, query_rt):
         rtmin_check = self.chrom_min_rts <= query_rt
