@@ -236,8 +236,8 @@ class TopNController(Controller):
         dda_scan_params.set(ScanParameters.PRECURSOR, precursor)
 
         # define isolation window
-        mz_lower = mz - isolation_window  # Da
-        mz_upper = mz + isolation_window  # Da
+        mz_lower = mz - (isolation_window/2)  # half-width isolation window, in Da
+        mz_upper = mz + (isolation_window/2)  # half-width isolation window, in Da
         isolation_windows = [[(mz_lower, mz_upper)]]
         dda_scan_params.set(ScanParameters.ISOLATION_WINDOWS, isolation_windows)
 
@@ -254,11 +254,11 @@ class TopNController(Controller):
         :param scan: the newly generated scan
         :return: None
         """
-        precursor = scan.precursor_mz
+        precursor = scan.scan_params.get(ScanParameters.PRECURSOR)
         if scan.ms_level >= 2 and precursor is not None:
-            isolation_windows = scan.isolation_windows
-            iso_min = isolation_windows[0][0][0]
-            iso_max = isolation_windows[0][0][1]
+            isolation_windows = scan.scan_params.get(ScanParameters.ISOLATION_WINDOWS)
+            iso_min = isolation_windows[0][0][0] / 2 # half-width isolation window, in Da
+            iso_max = isolation_windows[0][0][1] / 2 # half-width isolation window, in Da
             logger.debug('Time {:.6f} Isolated precursor ion {:.4f} at ({:.4f}, {:.4f})'.format(scan.rt,
                                                                                                 precursor.precursor_mz,
                                                                                                 iso_min,
