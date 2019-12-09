@@ -96,7 +96,6 @@ class TestTopNController(unittest.TestCase):
         env.run()
         set_log_level_debug()
 
-        logger.info('Writing to mzML file')
         filename = 'multibeer_TopN_ms2Peaks_withNoise.mzML'
         out_file = os.path.join(out_dir, filename)
         env.write_mzML(out_dir, filename)
