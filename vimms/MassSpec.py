@@ -430,7 +430,6 @@ class IndependentMassSpectrometer(object):
         scan_intensities = []  # all the intensity values in this scan
         ms_level = param.get(ScanParameters.MS_LEVEL)
         isolation_windows = param.get(ScanParameters.ISOLATION_WINDOWS)
-        precursor_mz = param.get(ScanParameters.PRECURSOR)
         scan_id = self.idx
 
         # for all chemicals that come out from the column coupled to the mass spec
@@ -646,9 +645,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             parent = None
 
         vimms_scan = Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
-                          scan_duration=None, isolation_windows=isolation_windows,
-                          precursor_mz=None, polarity=POSITIVE,
-                          scan_params=None, parent=None)
+                          scan_duration=None, scan_params=None, parent=None)
 
         self.fire_event(self.MS_SCAN_ARRIVED, vimms_scan)
         self.idx += 1

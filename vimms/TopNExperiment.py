@@ -39,7 +39,7 @@ def run_experiment(param):
             peak_sampler = get_peak_sampler(mzml_path, fragfile, min_rt, max_rt)
 
         mass_spec = IndependentMassSpectrometer(param['ionisation_mode'], param['data'], peak_sampler)
-        controller = TopNController(mass_spec, param['N'], param['isolation_window'],
+        controller = TopNController(mass_spec, param['N'], param['isolation_width'],
                                     param['mz_tol'], param['rt_tol'], param['min_ms1_intensity'])
         controller.run(param['min_rt'], param['max_rt'], progress_bar=param['pbar'])
         controller.write_mzML(analysis_name, mzml_out)
@@ -86,7 +86,7 @@ def run_serial_experiment(params):
         run_experiment(param)
 
 
-def get_params(experiment_name, Ns, rt_tols, mz_tol, isolation_window, ionisation_mode, data, peak_sampler,
+def get_params(experiment_name, Ns, rt_tols, mz_tol, isolation_width, ionisation_mode, data, peak_sampler,
                min_ms1_intensity, min_rt, max_rt,
                out_dir, pbar, mzml_path=None, fragfiles=None):
     '''
@@ -95,7 +95,7 @@ def get_params(experiment_name, Ns, rt_tols, mz_tol, isolation_window, ionisatio
     :param Ns: possible values of N in top-N to test
     :param rt_tols: possible values of DEW to test
     :param mz_tol: Top-N controller parameter: the m/z window (ppm) to prevent the same precursor ion to be fragmented again
-    :param isolation_window: Top-N controller parameter: the m/z window (ppm) to prevent the same precursor ion to be fragmented again
+    :param isolation_width: Top-N controller parameter: the m/z window (ppm) to prevent the same precursor ion to be fragmented again
     :param ionisation_mode: Top-N controller parameter: either positive or negative
     :param data: chemicals to fragment
     :param peak sampler: trained densities to sample values during simulatin
@@ -120,7 +120,7 @@ def get_params(experiment_name, Ns, rt_tols, mz_tol, isolation_window, ionisatio
                 'mz_tol': mz_tol,
                 'rt_tol': rt_tol,
                 'min_ms1_intensity': min_ms1_intensity,
-                'isolation_window': isolation_window,
+                'isolation_width': isolation_width,
                 'ionisation_mode': ionisation_mode,
                 'data': data,
                 'peak_sampler': peak_sampler,

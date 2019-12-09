@@ -51,7 +51,7 @@ def get_precursor_info(fragfile):
 
     last_ms1_peaklist = None
     last_ms1_scan_no = 0
-    isolation_window = 0.5  # Dalton
+    isolation_width = 1.0  # Dalton
     data = []
     for scan_no, scan in enumerate(run):
         if scan.ms_level == 1:  # save the last ms1 scan that we've seen
@@ -69,7 +69,7 @@ def get_precursor_info(fragfile):
                 precursor_mz = precursor['mz']
                 precursor_intensity = precursor['i']
                 res = _find_precursor_peaks(precursor, last_ms1_peaklist, last_ms1_scan_no,
-                                            isolation_window=isolation_window)
+                                            isolation_width=isolation_width)
                 ms2_peaklist = _get_peaks(scan)
                 row = [scan_no, scan_rt, precursor_mz, precursor_intensity, ms2_peaklist]
                 row.extend(res)
@@ -102,9 +102,9 @@ def _get_peaks(spectrum):
     return peaklist
 
 
-def _find_precursor_peaks(precursor, last_ms1_peaklist, last_ms1_scan_no, isolation_window=0.5):
+def _find_precursor_peaks(precursor, last_ms1_peaklist, last_ms1_scan_no, isolation_width=1.0):
     selected_ms1, selected_ms1_idx = _find_precursor_ms1(precursor, last_ms1_peaklist,
-                                                         last_ms1_scan_no, isolation_window)
+                                                         last_ms1_scan_no, isolation_width)
     selected_ms1_mz = selected_ms1[0]
     selected_ms1_rt = selected_ms1[1]
     selected_ms1_intensity = selected_ms1[2]
@@ -112,13 +112,13 @@ def _find_precursor_peaks(precursor, last_ms1_peaklist, last_ms1_scan_no, isolat
     return res
 
 
-def _find_precursor_ms1(precursor, last_ms1_peaklist, last_ms1_scan_no, isolation_window):
+def _find_precursor_ms1(precursor, last_ms1_peaklist, last_ms1_scan_no, isolation_width):
     precursor_mz = precursor['mz']
     precursor_intensity = precursor['i']
 
     # find mz in the last ms1 scan that fall within isolation window
     mzs = last_ms1_peaklist[:, 0]
-    diffs = abs(mzs - precursor_mz) < isolation_window
+    diffs = abs(mzs - precursor_mz) < (isolation_width / 2)
     idx = np.nonzero(diffs)[0]
 
     if len(idx) == 0:  # should never happen!?

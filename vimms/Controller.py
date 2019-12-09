@@ -149,13 +149,13 @@ class TopNController(Controller):
     that are not excluded
     """
 
-    def __init__(self, ionisation_mode, N, isolation_window, mz_tol, rt_tol, min_ms1_intensity):
+    def __init__(self, ionisation_mode, N, isolation_width, mz_tol, rt_tol, min_ms1_intensity):
         super().__init__()
         self.ionisation_mode = ionisation_mode
         self.N = N
-        self.isolation_window = isolation_window  # the isolation window (in Dalton) to select a precursor ion
-        self.mz_tol = mz_tol  # the m/z window (ppm) to prevent the same precursor ion to be fragmented again
-        self.rt_tol = rt_tol  # the rt window to prevent the same precursor ion to be fragmented again
+        self.isolation_width = isolation_width  # the isolation width (in Dalton) to select a precursor ion
+        self.mz_tols = mz_tol  # the m/z window (ppm) to prevent the same precursor ion to be fragmented again
+        self.rt_tols = rt_tol  # the rt window to prevent the same precursor ion to be fragmented again
         self.min_ms1_intensity = min_ms1_intensity  # minimum ms1 intensity to fragment
 
         # for dynamic exclusion window
@@ -202,8 +202,8 @@ class TopNController(Controller):
                     continue
 
                 # create a new ms2 scan parameter to be sent to the mass spec
-                dda_scan_params = self._get_dda_scan_param(mz, intensity, self.isolation_window,
-                                                           self.mz_tol, self.rt_tol)
+                dda_scan_params = self._get_dda_scan_param(mz, intensity, self.isolation_width,
+                                                           self.mz_tols, self.rt_tols)
                 new_tasks.append(dda_scan_params)
                 fragmented_count += 1
 
@@ -225,7 +225,7 @@ class TopNController(Controller):
         self.exclusion_list = []
         self.precursor_information = defaultdict(list)
 
-    def _get_dda_scan_param(self, mz, intensity, isolation_window, mz_tol, rt_tol):
+    def _get_dda_scan_param(self, mz, intensity, isolation_width, mz_tol, rt_tol):
         dda_scan_params = ScanParameters()
         dda_scan_params.set(ScanParameters.MS_LEVEL, 2)
 
@@ -236,8 +236,8 @@ class TopNController(Controller):
         dda_scan_params.set(ScanParameters.PRECURSOR, precursor)
 
         # define isolation window
-        mz_lower = mz - (isolation_window/2)  # half-width isolation window, in Da
-        mz_upper = mz + (isolation_window/2)  # half-width isolation window, in Da
+        mz_lower = mz - (isolation_width / 2)  # half-width isolation window, in Da
+        mz_upper = mz + (isolation_width / 2)  # half-width isolation window, in Da
         isolation_windows = [[(mz_lower, mz_upper)]]
         dda_scan_params.set(ScanParameters.ISOLATION_WINDOWS, isolation_windows)
 
@@ -318,15 +318,15 @@ class TopNController(Controller):
 
 class HybridController(TopNController):
     def __init__(self, ionisation_mode, N, scan_param_changepoints,
-                 isolation_window, mz_tol, rt_tol, min_ms1_intensity,
+                 isolation_widths, mz_tols, rt_tols, min_ms1_intensity,
                  n_purity_scans=None, purity_shift=None, purity_threshold=0):
-        super().__init__(ionisation_mode, N, isolation_window, mz_tol, rt_tol, min_ms1_intensity)
+        super().__init__(ionisation_mode, N, isolation_widths, mz_tols, rt_tols, min_ms1_intensity)
 
         # make sure these are stored as numpy arrays
         self.N = np.array(N)
-        self.isolation_window = np.array(isolation_window)  # the isolation window (in Dalton) to select a precursor ion
-        self.mz_tol = np.array(mz_tol)  # the m/z window (ppm) to prevent the same precursor ion to be fragmented again
-        self.rt_tol = np.array(rt_tol)  # the rt window to prevent the same precursor ion to be fragmented again
+        self.isolation_width = np.array(isolation_widths)  # the isolation window (in Dalton) to select a precursor ion
+        self.mz_tols = np.array(mz_tols)  # the m/z window (ppm) to prevent the same precursor ion to be fragmented again
+        self.rt_tols = np.array(rt_tols)  # the rt window to prevent the same precursor ion to be fragmented again
         if scan_param_changepoints is not None:
             self.scan_param_changepoints = np.array([0] + scan_param_changepoints)
         else:
@@ -338,8 +338,8 @@ class HybridController(TopNController):
         self.purity_threshold = purity_threshold
 
         # make sure the input are all correct
-        assert len(self.N) == len(self.scan_param_changepoints) == len(self.isolation_window) == len(
-            self.mz_tol) == len(self.rt_tol)
+        assert len(self.N) == len(self.scan_param_changepoints) == len(self.isolation_width) == len(
+            self.mz_tols) == len(self.rt_tols)
         if self.purity_threshold != 0:
             assert all(self.n_purity_scans <= np.array(self.N))
 
@@ -354,14 +354,14 @@ class HybridController(TopNController):
 
             # set up current scan parameters
             current_N, current_rt_tol, idx = self._get_current_N_DEW(rt)
-            current_isolation_window = self.isolation_window[idx]
-            current_mz_tol = self.mz_tol[idx]
+            current_isolation_width = self.isolation_width[idx]
+            current_mz_tol = self.mz_tols[idx]
 
             # calculate purities
             purities = []
             for mz_idx in range(len(self.last_ms1_scan.mzs)):
                 nearby_mzs_idx = np.where(
-                    abs(self.last_ms1_scan.mzs - self.last_ms1_scan.mzs[mz_idx]) < current_isolation_window)
+                    abs(self.last_ms1_scan.mzs - self.last_ms1_scan.mzs[mz_idx]) < current_isolation_width)
                 if len(nearby_mzs_idx[0]) == 1:
                     purities.append(1)
                 else:
@@ -397,14 +397,14 @@ class HybridController(TopNController):
                     for purity_idx in range(self.n_purity_scans):
                         # create a new ms2 scan parameter to be sent to the mass spec
                         dda_scan_params = self._get_dda_scan_param(mz + purity_shift_amounts[purity_idx], intensity,
-                                                                   current_isolation_window,
+                                                                   current_isolation_width,
                                                                    current_mz_tol, current_rt_tol)
                         new_tasks.append(dda_scan_params)
                         fragmented_count += 1
                         # TODO: need to work out what we want to do here
                 else:
                     # create a new ms2 scan parameter to be sent to the mass spec
-                    dda_scan_params = self._get_dda_scan_param(mz, intensity, current_isolation_window,
+                    dda_scan_params = self._get_dda_scan_param(mz, intensity, current_isolation_width,
                                                                current_mz_tol, current_rt_tol)
                     new_tasks.append(dda_scan_params)
                     fragmented_count += 1
@@ -425,7 +425,7 @@ class HybridController(TopNController):
     def _get_current_N_DEW(self, time):
         idx = np.nonzero(self.scan_param_changepoints <= time)[0][-1]
         current_N = self.N[idx]
-        current_rt_tol = self.rt_tol[idx]
+        current_rt_tol = self.rt_tols[idx]
         return current_N, current_rt_tol, idx
 
 
@@ -434,10 +434,10 @@ class RoiController(TopNController):
     An ROI based controller with multiple options
     """
 
-    def __init__(self, ionisation_mode, isolation_window, mz_tol, min_ms1_intensity, min_roi_intensity,
+    def __init__(self, ionisation_mode, isolation_width, mz_tol, min_ms1_intensity, min_roi_intensity,
                  min_roi_length,
                  score_method, N=None, rt_tol=10, score_params=None):
-        super().__init__(ionisation_mode, N, isolation_window, mz_tol, rt_tol, min_ms1_intensity)
+        super().__init__(ionisation_mode, N, isolation_width, mz_tol, rt_tol, min_ms1_intensity)
 
         # ROI stuff
         self.min_roi_intensity = min_roi_intensity
@@ -489,8 +489,8 @@ class RoiController(TopNController):
                 self.live_roi_last_rt[i] = rt  # TODO: May want to update this to use the time of the MS2 scan
 
                 # create a new ms2 scan parameter to be sent to the mass spec
-                dda_scan_params = self._get_dda_scan_param(mz, intensity, self.isolation_window,
-                                                           self.mz_tol, self.rt_tol)
+                dda_scan_params = self._get_dda_scan_param(mz, intensity, self.isolation_width,
+                                                           self.mz_tols, self.rt_tols)
                 new_tasks.append(dda_scan_params)
 
                 # set this ms1 scan as has been processed
@@ -525,7 +525,7 @@ class RoiController(TopNController):
                 intensity = new_scan.intensities[idx]
                 mz = new_scan.mzs[idx]
                 if intensity >= self.min_roi_intensity:
-                    match_roi = match(Roi(mz, 0, 0), self.live_roi, self.mz_tol, mz_units=self.mz_units)
+                    match_roi = match(Roi(mz, 0, 0), self.live_roi, self.mz_tols, mz_units=self.mz_units)
                     if match_roi:
                         match_roi.add(mz, current_ms1_scan_rt, intensity)
                         if match_roi in not_grew:
@@ -551,7 +551,7 @@ class RoiController(TopNController):
             scores = np.log(self.current_roi_intensities)  # log intensities
             scores *= (np.log(self.current_roi_intensities) > np.log(self.min_ms1_intensity))  # intensity filter
             time_filter = (1 - np.array(self.live_roi_fragmented).astype(int))
-            time_filter[time_filter==0] = ((self.last_ms1_scan.rt - np.array(self.live_roi_last_rt)[time_filter==0]) > self.rt_tol)
+            time_filter[time_filter==0] = ((self.last_ms1_scan.rt - np.array(self.live_roi_last_rt)[time_filter==0]) > self.rt_tols)
             scores *= time_filter
             if len(scores) > self.N:  # number of fragmentation events filter
                 scores[scores.argsort()[:(len(scores) - self.N)]] = 0
@@ -609,9 +609,9 @@ class TreeController(Controller):
 
 
 class TestController(TopNController):
-    def __init__(self, ionisation_mode, N, isolation_window, mz_tol, rt_tol, min_ms1_intensity):
+    def __init__(self, ionisation_mode, N, isolation_width, mz_tol, rt_tol, min_ms1_intensity):
         self.extra_scans_done = False
-        super().__init__(ionisation_mode, N, isolation_window, mz_tol, rt_tol, min_ms1_intensity)
+        super().__init__(ionisation_mode, N, isolation_width, mz_tol, rt_tol, min_ms1_intensity)
 
     def _process_scan(self, scan):
         # if there's a previous ms1 scan to process
@@ -630,8 +630,8 @@ class TestController(TopNController):
                     intensity = intensities[i]
 
                     # create a new ms2 scan parameter to be sent to the mass spec
-                    dda_scan_params = self._get_dda_scan_param(mz, intensity, self.isolation_window,
-                                                               self.mz_tol, self.rt_tol)
+                    dda_scan_params = self._get_dda_scan_param(mz, intensity, self.isolation_width,
+                                                               self.mz_tols, self.rt_tols)
                     new_tasks.append(dda_scan_params)
                     fragmented_count += 1
 
