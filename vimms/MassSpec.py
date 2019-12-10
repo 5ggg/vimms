@@ -242,8 +242,8 @@ class IndependentMassSpectrometer(object):
         """
 
         # get scan param from the processing queue and do one scan
-        param = self._get_param()
-        scan = self._get_scan(self.time, param)
+        params = self._get_params()
+        scan = self._get_scan(self.time, params)
 
         # notify the controller that a new scan has been generated
         # at this point, the MS_SCAN_ARRIVED event handler in the controller is called
@@ -350,18 +350,18 @@ class IndependentMassSpectrometer(object):
     # Private methods
     ####################################################################################################################
 
-    def _get_param(self):
+    def _get_params(self):
         """
         Retrieves a new set of scan parameters from the processing queue
         :return: A new set of scan parameters from the queue if available, otherwise it returns the default scan params.
         """
         # if the processing queue is empty, then just do the repeating scan
         if len(self.processing_queue) == 0:
-            param = self.environment.get_default_scan_params()
+            params = self.environment.get_default_scan_params()
         else:
             # otherwise pop the parameter for the next scan from the queue
-            param = self.processing_queue.pop(0)
-        return param
+            params = self.processing_queue.pop(0)
+        return params
 
     def _increase_time(self, current_level, current_N, current_DEW, next_scan_param):
         # look into the queue, find out what the next scan ms_level is, and compute the scan duration
@@ -420,7 +420,7 @@ class IndependentMassSpectrometer(object):
     # Scan generation methods
     ####################################################################################################################
 
-    def _get_scan(self, scan_time, param):
+    def _get_scan(self, scan_time, params):
         """
         Constructs a scan at a particular timepoint
         :param scan_time: the timepoint
@@ -468,7 +468,7 @@ class IndependentMassSpectrometer(object):
         # Note: at this point, the scan duration is not set yet because we don't know what the next scan is going to be
         # We will set it later in the get_next_scan() method after we've notified the controller that this scan is produced.
         return Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
-                    scan_duration=None, scan_params=param)
+                    scan_duration=None, scan_params=params)
 
     def _get_chem_indices(self, query_rt):
         rtmin_check = self.chrom_min_rts <= query_rt
