@@ -235,11 +235,8 @@ class TopNController(Controller):
                               precursor_charge=precursor_charge, precursor_scan_id=self.last_ms1_scan.scan_id)
         dda_scan_params.set(ScanParameters.PRECURSOR, precursor)
 
-        # define isolation window
-        mz_lower = mz - (isolation_width / 2)  # half-width isolation window, in Da
-        mz_upper = mz + (isolation_width / 2)  # half-width isolation window, in Da
-        isolation_windows = [[(mz_lower, mz_upper)]]
-        dda_scan_params.set(ScanParameters.ISOLATION_WINDOWS, isolation_windows)
+        # set the full-width isolation width, in Da
+        dda_scan_params.set(ScanParameters.ISOLATION_WIDTH, isolation_width)
 
         # define dynamic exclusion parameters
         dda_scan_params.set(ScanParameters.DYNAMIC_EXCLUSION_MZ_TOL, mz_tol)
@@ -256,9 +253,9 @@ class TopNController(Controller):
         """
         precursor = scan.scan_params.get(ScanParameters.PRECURSOR)
         if scan.ms_level >= 2 and precursor is not None:
-            isolation_windows = scan.scan_params.get(ScanParameters.ISOLATION_WINDOWS)
-            iso_min = isolation_windows[0][0][0] / 2 # half-width isolation window, in Da
-            iso_max = isolation_windows[0][0][1] / 2 # half-width isolation window, in Da
+            isolation_windows = scan.scan_params.compute_isolation_windows()
+            iso_min = isolation_windows[0][0][0] # half-width isolation window, in Da
+            iso_max = isolation_windows[0][0][1] # half-width isolation window, in Da
             logger.debug('Time {:.6f} Isolated precursor ion {:.4f} at ({:.4f}, {:.4f})'.format(scan.rt,
                                                                                                 precursor.precursor_mz,
                                                                                                 iso_min,

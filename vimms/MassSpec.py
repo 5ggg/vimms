@@ -9,7 +9,7 @@ from clr import ListAssemblies
 from events import Events
 from loguru import logger
 
-from vimms.Common import adduct_transformation, POSITIVE, NEGATIVE
+from vimms.Common import adduct_transformation, POSITIVE, NEGATIVE, DEFAULT_MS1_SCAN_WINDOW
 
 
 class Peak(object):
@@ -91,6 +91,7 @@ class ScanParameters(object):
     # possible scan parameter names
     MS_LEVEL = 'ms_level'
     ISOLATION_WINDOWS = 'isolation_windows'
+    ISOLATION_WIDTH = 'isolation_width'
     PRECURSOR = 'precursor'
     DYNAMIC_EXCLUSION_MZ_TOL = 'mz_tol'
     DYNAMIC_EXCLUSION_RT_TOL = 'rt_tol'
@@ -122,6 +123,19 @@ class ScanParameters(object):
             return self.params[key]
         else:
             return None
+
+    def compute_isolation_windows(self):
+        """
+        Gets the full-width (DDA) isolation window around a precursor m/z
+        """
+        mz = self.get(ScanParameters.PRECURSOR).precursor_mz
+        isolation_width = self.get(ScanParameters.ISOLATION_WIDTH)
+        assert mz is not None and isolation_width is not None
+
+        mz_lower = mz - (isolation_width / 2)  # half-width isolation window, in Da
+        mz_upper = mz + (isolation_width / 2)  # half-width isolation window, in Da
+        isolation_windows = [[(mz_lower, mz_upper)]]
+        return isolation_windows
 
     def __repr__(self):
         return 'ScanParameters %s' % (self.params)
@@ -428,8 +442,14 @@ class IndependentMassSpectrometer(object):
         """
         scan_mzs = []  # all the mzs values in this scan
         scan_intensities = []  # all the intensity values in this scan
-        ms_level = param.get(ScanParameters.MS_LEVEL)
-        isolation_windows = param.get(ScanParameters.ISOLATION_WINDOWS)
+        ms_level = params.get(ScanParameters.MS_LEVEL)
+        if ms_level == 1: # if ms1 then we scan the whole range of m/z
+            isolation_windows = [[DEFAULT_MS1_SCAN_WINDOW]]
+        else: # if ms2 then we check if the isolation window parameter is specified
+            isolation_windows = params.get(ScanParameters.ISOLATION_WINDOWS)
+            if isolation_windows is None: # if not then we compute from the precursor mz and isolation width
+                isolation_windows = params.compute_isolation_windows()
+
         scan_id = self.idx
 
         # for all chemicals that come out from the column coupled to the mass spec
