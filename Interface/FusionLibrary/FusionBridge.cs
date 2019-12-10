@@ -75,7 +75,7 @@ namespace FusionLibrary
             ICustomScan cs = ScanControl.CreateCustomScan();
             foreach (KeyValuePair<string, string> kvp in cs.Values)
             {
-                string kvpString = string.Format("cs.Values Key = {0}, Value = {1}", kvp.Key, kvp.Value);
+                string kvpString = string.Format("- cs.Values\tKey = {0}, Value = {1}", kvp.Key, kvp.Value);
                 WriteLog(kvpString);
             }
 
@@ -128,13 +128,13 @@ namespace FusionLibrary
             {
                 string accessId = null;
                 scan.Trailer.TryGetValue("Access id:", out accessId);
-                WriteLog(string.Format("Received MS Scan Number {0} Access id {1} -- {2} peaks",
+                WriteLog(string.Format("Received a new scan (scan number={0}, runningNumber={1}) containing {2} peaks",
                     scan.Header["Scan"], accessId, scan.CentroidCount));
 
                 // dump header
                 foreach (KeyValuePair<string, string> kvp in scan.Header)
                 {
-                    string msg = string.Format("- Header Key = {0}, Value = {1}", kvp.Key, kvp.Value);
+                    string msg = string.Format("- Header\tKey = {0}, Value = {1}", kvp.Key, kvp.Value);
                     WriteLog(msg);
                 }
             }
@@ -156,9 +156,8 @@ namespace FusionLibrary
 
         private void CreateCustomScanHandlerHandler(object sender, EventArgs e)
         {
-            WriteLog("customScanHandler starts");
+            WriteLog("FusionBridge receives CanAcceptNextCustomScan event");
             customScanHandler();
-            WriteLog("customScanHandler ends");
         }
 
         public void DumpPossibleParameters()
@@ -190,17 +189,15 @@ namespace FusionLibrary
         public long CreateCustomScan(double precursorMass, double isolationWidth, double collisionEnergy, int msLevel,
             string polarity, double firstMass, double lastMass, double singleProcessingDelay)
         {
-            WriteLog(String.Format("StartNewScan called -- precursorMass {0} isolationWidth {1} collisionEnergy {2} msLevel {3} " +
-                "polarity {4} firstMass {5} lastMass {6} singleProcessingDelay {7}",
-                precursorMass, isolationWidth, collisionEnergy, msLevel, polarity, firstMass, lastMass, singleProcessingDelay));
+            WriteLog(String.Format("Placing a custom scan (runningNumber={0}, singleProcessingDelay={1})", this.runningNumber, singleProcessingDelay));
 
             // TODO: validate input 
 
-
+            long initialRunningNumber = this.runningNumber;
             if (ScanControl.PossibleParameters.Length > 0)
             {
                 ICustomScan cs = ScanControl.CreateCustomScan();
-                cs.RunningNumber = runningNumber++;
+                cs.RunningNumber = this.runningNumber++;
 
                 // Allow an extra delay of 500 ms, we will answer as fast as possible, so this is a maximum value.
                 cs.SingleProcessingDelay = singleProcessingDelay;
@@ -232,7 +229,7 @@ namespace FusionLibrary
                 // Dump key-value pairs in cs.Values
                 foreach (KeyValuePair<string, string> kvp in cs.Values)
                 {
-                    string msg = string.Format("- cs.Values Key = {0}, Value = {1}", kvp.Key, kvp.Value);
+                    string msg = string.Format("- cs.Values\tKey = {0}, Value = {1}", kvp.Key, kvp.Value);
                     WriteLog(msg);
                 }
 
@@ -240,31 +237,32 @@ namespace FusionLibrary
                 {
                     if (!ScanControl.SetCustomScan(cs))
                     {
-                        WriteLog("New custom scan has not been placed, connection to service broken!!");
+                        WriteLog(String.Format("FAILED to place a custom scan (runningNumber={0}), connection to service broken!!", cs.RunningNumber));
                         return -1;
                     }
                     else
                     {
                         if (cs.Values["ScanType"] == "Full")
                         {
-                            WriteLog("Placed a new custom fullscan (" + cs.RunningNumber + ")");
+                            WriteLog(String.Format("Successfully placed a custom fullscan scan (runningNumber={0})", cs.RunningNumber));
                         }
                         else if (cs.Values["ScanType"] == "MSn")
                         {
-                            WriteLog("Placed a new custom MSn scan (" + cs.RunningNumber + ") for precursor mz=" + cs.Values["PrecursorMass"]);
+                            WriteLog(String.Format("Successfully placed a custom MSn scan (runningNumber={0})", cs.RunningNumber));
                         }
                         return cs.RunningNumber;
                     }
                 }
                 catch (Exception e)
                 {
-                    WriteLog("Error placing a new scan: " + e.Message);
+                    WriteLog(String.Format("FAILED to place a custom scan (runningNumber={0}) due to {1}!!", cs.RunningNumber, e.Message));
+                    WriteLog(String.Format("Stacktrace: {0}", e.StackTrace));
                     return -1;
                 }
             }
             else
             {
-                WriteLog("New custom scan has not been placed, no parameters available!!");
+                WriteLog(String.Format("FAILED to place a custom scan (runningNumber={0}), no parameters available!!", initialRunningNumber));
                 return -1;
             }
         }

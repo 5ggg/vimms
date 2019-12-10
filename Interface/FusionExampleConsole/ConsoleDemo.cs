@@ -26,13 +26,21 @@ namespace FusionExampleConsole
             // create scan arrive user event handler
             FusionBridge.UserScanArriveDelegate userScanHandler = (IMsScan scan) =>
             {
-                fusionBridge.WriteLog("userScanHandler is called");
+                string accessId = null;
+                scan.Trailer.TryGetValue("Access id:", out accessId);
+                string scanNumber = scan.Header["Scan"];
+
+                fusionBridge.WriteLog(String.Format("userScanHandler (scan number={0}, runningNumber={1}) starts", 
+                    scanNumber, accessId));
+                fusionBridge.WriteLog(String.Format("userScanHandler (scan number={0}, runningNumber={1}) ends",
+                    scanNumber, accessId));
             };
 
             // create user state changed event handler
             FusionBridge.UserStateChangedDelegate userStateChangeHandler = (IState state) =>
             {
-                fusionBridge.WriteLog("userStateChangeHandler is called");
+                fusionBridge.WriteLog("userStateChangeHandler starts");
+                fusionBridge.WriteLog("userStateChangeHandler ends");
             };
 
             // create user custom scan event handler
@@ -48,12 +56,14 @@ namespace FusionExampleConsole
             double singleProcessingDelay = 0.50;
             FusionBridge.UserCreateCustomScanDelegate userCreateCustomScanHandler = () =>
             {
+                fusionBridge.WriteLog("userCreateCustomScanHandler starts");
                 if (precursorMass < endMz)
                 {
                     precursorMass += 0.02;
                     fusionBridge.CreateCustomScan(precursorMass, isolationWidth, collisionEnergy, msLevel, polarity, 
                         firstMass, lastMass, singleProcessingDelay);
                 }
+                fusionBridge.WriteLog("userCreateCustomScanHandler ends");
             };
 
             // set all the event handlers to fusion bridge
