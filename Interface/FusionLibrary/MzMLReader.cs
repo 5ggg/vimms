@@ -48,7 +48,7 @@ namespace FusionLibrary
 
         public IFusionInstrumentAccess Get(int index)
         {
-            return new FusionAccess(_spectra);
+            return new MyFusionAccess(_spectra);
         }
 
         public void StartOnlineAccess()
@@ -62,11 +62,11 @@ namespace FusionLibrary
         }
     }
 
-    class FusionAccess : IFusionInstrumentAccess
+    class MyFusionAccess : IFusionInstrumentAccess
     {
         private IEnumerable<SimpleSpectrum> _spectra;
 
-        public FusionAccess(IEnumerable<SimpleSpectrum> spectra)
+        public MyFusionAccess(IEnumerable<SimpleSpectrum> spectra)
         {
             _spectra = spectra;
         }
@@ -83,7 +83,7 @@ namespace FusionLibrary
 
         public int CountAnalogChannels => throw new NotImplementedException();
 
-        public IFusionControl Control => new InstrumentControl();
+        public IFusionControl Control => new MyInstrumentControl();
 
         IControl IInstrumentAccess.Control => throw new NotImplementedException();
 
@@ -98,16 +98,16 @@ namespace FusionLibrary
 
         public IFusionMsScanContainer GetMsScanContainer(int msDetectorSet)
         {
-            return new ScanContainer(_spectra);
+            return new MyScanContainer(_spectra);
         }
 
         IMsScanContainer IInstrumentAccess.GetMsScanContainer(int msDetectorSet)
         {
-            return new ScanContainer(_spectra);
+            return new MyScanContainer(_spectra);
         }
     }
 
-    class InstrumentControl : IFusionControl
+    class MyInstrumentControl : IFusionControl
     {
         public ISyringePumpControl SyringePumpControl => throw new NotImplementedException();
 
@@ -115,15 +115,15 @@ namespace FusionLibrary
 
         public IMethods Methods => throw new NotImplementedException();
 
-        public IAcquisition Acquisition => new InstrumentControlAcquisition();
+        public IAcquisition Acquisition => new MyAcquisition();
 
         public IScans GetScans(bool exclusiveAccess)
         {
-            return new ScanControl();
+            return new MyScanControl();
         }
     }
 
-    class InstrumentControlAcquisition : IAcquisition
+    class MyAcquisition : IAcquisition
     {
         public IState State => new MyAcquisitionState();
 
@@ -223,12 +223,12 @@ namespace FusionLibrary
         public InstrumentState SystemState => InstrumentState.ReadyToDownload;
     }
 
-    class ScanControl : IScans
+    class MyScanControl : IScans
     {
         public IParameterDescription[] PossibleParameters => new MyParameterDescription[3];
         public List<ICustomScan> placedCustomScans = new List<ICustomScan>();
 
-        public ScanControl()
+        public MyScanControl()
         {
             PossibleParameters[0] = new MyParameterDescription("CollisionEnergy", "string (0;200)", "", "The normalized collision " +
                 "energy (NCE) It is expressed as a string of values, with each value sepearted by a ';' delimiter. A maximum of 10 values can be defined.");
@@ -316,20 +316,21 @@ namespace FusionLibrary
         public long RunningNumber { get; set; } = 1;
     }
 
-    class ScanContainer : IFusionMsScanContainer
+    class MyScanContainer : IFusionMsScanContainer
     {
         private SimpleSpectrum[] spectra;
         private IMsScan lastScan;
 
-        public ScanContainer(IEnumerable<SimpleSpectrum> spectra)
+        public MyScanContainer(IEnumerable<SimpleSpectrum> spectra)
         {
             this.spectra = spectra.ToArray();
+            long runningNumber = 100000;
             for (int i = 0; i < this.spectra.Length; i++)
             {
                 // schedule events to be triggered, see https://stackoverflow.com/questions/545533/delayed-function-calls
                 SimpleSpectrum current = this.spectra[i];
                 int elutionTimeInMilliSecond = (int)(current.ScanStartTime * 60 * 1000);
-                IMsScan msScan = new MyMsScan(current);
+                IMsScan msScan = new MyMsScan(current, runningNumber+i);
                 MsScanEventArgs args = new MyMsScanEventArgs(msScan);
                 Task.Delay(elutionTimeInMilliSecond).ContinueWith(t => OnMsScanArrived(args));
                 this.lastScan = msScan;
@@ -376,7 +377,7 @@ namespace FusionLibrary
 
         public IInformationSourceAccess TuneData => throw new NotImplementedException();
 
-        public IInformationSourceAccess Trailer => throw new NotImplementedException();
+        public IInformationSourceAccess Trailer { get; set; } = null;
 
         public IInformationSourceAccess StatusLog => throw new NotImplementedException();
 
@@ -395,7 +396,7 @@ namespace FusionLibrary
         #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
-        public MyMsScan(SimpleSpectrum scan)
+        public MyMsScan(SimpleSpectrum scan, long runningNumber)
         {
             // obtained from checking the dumps of scan header from the actual instrument
             this.Header["MassAnalyzer"] = "";
@@ -424,6 +425,7 @@ namespace FusionLibrary
             this.Header["MSX"] = "";
             this.Header["SourceFragmentaiton"] = ""; // the spelling is correct here, "SourceFragmentaiton"
             this.Header["SourceFragmentationEnergy"] = "";
+            this.Trailer = new MyTrailer(runningNumber);
 
             List<ICentroid> myList = new List<ICentroid>();
             if (scan.Centroided)
@@ -470,6 +472,37 @@ namespace FusionLibrary
         }
         #endregion
 
+    }
+
+    class MyTrailer : IInformationSourceAccess
+    {
+        private readonly long runningNumber = 0;
+
+        public MyTrailer(long _runningNumber)
+        {
+            runningNumber = _runningNumber;
+        }
+
+        public IEnumerable<string> ItemNames => throw new NotImplementedException();
+
+        public bool Available => throw new NotImplementedException();
+
+        public bool Valid => throw new NotImplementedException();
+
+        public bool TryGetRawValue(string name, out object value)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool TryGetValue(string name, out string value)
+        {
+            value = "";
+            if (name == "Access id:")
+            {
+                value = runningNumber.ToString();
+            }
+            return true;
+        }
     }
 
     class MyCentroid : ICentroid

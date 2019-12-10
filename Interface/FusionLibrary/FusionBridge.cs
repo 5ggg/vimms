@@ -126,9 +126,10 @@ namespace FusionLibrary
             }
             else
             {
-                WriteLog(string.Format("Received MS Scan Number {0} -- {1} peaks",
-                scan.Header["Scan"],
-                scan.CentroidCount));
+                string accessId = null;
+                scan.Trailer.TryGetValue("Access id:", out accessId);
+                WriteLog(string.Format("Received MS Scan Number {0} Access id {1} -- {2} peaks",
+                    scan.Header["Scan"], accessId, scan.CentroidCount));
 
                 // dump header
                 foreach (KeyValuePair<string, string> kvp in scan.Header)
@@ -186,7 +187,7 @@ namespace FusionLibrary
             }
         }
 
-        public void CreateCustomScan(double precursorMass, double isolationWidth, double collisionEnergy, int msLevel,
+        public long CreateCustomScan(double precursorMass, double isolationWidth, double collisionEnergy, int msLevel,
             string polarity, double firstMass, double lastMass, double singleProcessingDelay)
         {
             WriteLog(String.Format("StartNewScan called -- precursorMass {0} isolationWidth {1} collisionEnergy {2} msLevel {3} " +
@@ -240,6 +241,7 @@ namespace FusionLibrary
                     if (!ScanControl.SetCustomScan(cs))
                     {
                         WriteLog("New custom scan has not been placed, connection to service broken!!");
+                        return -1;
                     }
                     else
                     {
@@ -251,16 +253,19 @@ namespace FusionLibrary
                         {
                             WriteLog("Placed a new custom MSn scan (" + cs.RunningNumber + ") for precursor mz=" + cs.Values["PrecursorMass"]);
                         }
+                        return cs.RunningNumber;
                     }
                 }
                 catch (Exception e)
                 {
                     WriteLog("Error placing a new scan: " + e.Message);
+                    return -1;
                 }
             }
             else
             {
                 WriteLog("New custom scan has not been placed, no parameters available!!");
+                return -1;
             }
         }
 

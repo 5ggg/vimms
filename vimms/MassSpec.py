@@ -617,6 +617,9 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         self.show_console_logs = show_console_logs
         self.fusion_bridge = None
 
+        self.scan_number_to_params = {}
+        self.scan_number_to_scans = {}
+
     def run(self):
         self.start_time = time.time()
 
@@ -637,11 +640,25 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         state_changed_delegate = FusionBridge.UserStateChangedDelegate(self.state_changed_handler)
         custom_scan_delegate = FusionBridge.UserCreateCustomScanDelegate(self.custom_scan_handler)
         self.fusion_bridge.SetEventHandlers(scan_handler_delegate, state_changed_delegate, custom_scan_delegate)
-        self._send_custom_scan()  # send the initial custom scan to start the custom scan generation process
+
+        # send the initial custom scan to start the custom scan generation process
+        res = self._send_custom_scan()
+        if res is not None:
+            running_number, params = res
+            self.scan_number_to_params[running_number] = params
 
     def step(self, iapi_scan):
-        # convert IAPI scan object to Vimms scan object
-        scan_id = int(iapi_scan.Header['Scan'])
+        """
+        Maps from an IAPI scan object to a Vimms scan object
+        :param iapi_scan: an IAPI scan object
+        :return: a Vimms scan object
+        """
+        # the custom scan id are stored in the trailer, so we try to retrieve that and set it as the scan id
+        # if it isn't set, then the default value is 0, in which case we use the scan number in the header as scan id
+        scan_id = int(self._get_access_id(iapi_scan))
+        if scan_id == 0:
+            scan_id = int(iapi_scan.Header['Scan'])
+
         scan_time = float(iapi_scan.Header['StartTime'])
         scan_mzs = np.array([c.Mz for c in iapi_scan.Centroids])
         scan_intensities = np.array([c.Intensity for c in iapi_scan.Centroids])
@@ -671,8 +688,10 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         self.idx += 1
 
     def custom_scan_handler(self):
-        # logger.debug('custom_scan_handler called')
-        self._send_custom_scan()
+        res = self._send_custom_scan()
+        if res is not None:
+            running_number, params = res
+            self.scan_number_to_params[running_number] = params
 
     def state_changed_handler(self, state):
         logger.debug('state_changed_handler called')
@@ -694,18 +713,34 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         and sends it over to the actual mass spec.
         """
         # get one scan param from the mass spec processing queue and send it over
-        param = self._get_param()
-        if param is not None:
-            ms_level = param.get(ScanParameters.MS_LEVEL)
+        params = self._get_params()
+        if params is not None:
+            ms_level = params.get(ScanParameters.MS_LEVEL)
             precursor_mass = 0.0
             if ms_level == 2:
-                logger.debug('Sending a custom scan with parameters ' + str(param))
-                precursor_mass = param.get(ScanParameters.PRECURSOR).precursor_mz
+                precursor_mass = params.get(ScanParameters.PRECURSOR).precursor_mz
             isolation_width = 0.7
             collision_energy = 35.0
             polarity = POSITIVE
             first_mass = 50.0
             last_mass = 600.0
             single_processing_delay = 0.50
-            self.fusion_bridge.CreateCustomScan(precursor_mass, isolation_width, collision_energy, ms_level,
+            running_number = self.fusion_bridge.CreateCustomScan(precursor_mass, isolation_width, collision_energy, ms_level,
                                                 polarity, first_mass, last_mass, single_processing_delay)
+            if ms_level == 2:
+                logger.debug('Sent custom scan %d with parameters %s' % (running_number, str(params)))
+            return running_number, params
+        else:
+            return None
+
+    def _get_access_id(self, iapi_scan):
+        """
+        Extracts the access id from the trailer data of an IAPI scan
+        :param iapi_scan: an IAPI scan
+        :return: the access id
+        """
+        # noinspection PyUnresolvedReferences
+        from System import String
+        dummy_out = String('')
+        returned_val, real_out = iapi_scan.Trailer.TryGetValue('Access id:', dummy_out)
+        return real_out
