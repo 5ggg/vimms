@@ -64,11 +64,12 @@ namespace FusionLibrary
 
     class MyFusionAccess : IFusionInstrumentAccess
     {
-        private IEnumerable<SimpleSpectrum> _spectra;
+        private MyScanContainer myScanContainer;
 
         public MyFusionAccess(IEnumerable<SimpleSpectrum> spectra)
         {
-            _spectra = spectra;
+            this.myScanContainer = new MyScanContainer(spectra);
+
         }
 
         public int InstrumentId => throw new NotImplementedException();
@@ -83,7 +84,7 @@ namespace FusionLibrary
 
         public int CountAnalogChannels => throw new NotImplementedException();
 
-        public IFusionControl Control => new MyInstrumentControl();
+        public IFusionControl Control => new MyInstrumentControl(this.myScanContainer);
 
         IControl IInstrumentAccess.Control => throw new NotImplementedException();
 
@@ -98,17 +99,24 @@ namespace FusionLibrary
 
         public IFusionMsScanContainer GetMsScanContainer(int msDetectorSet)
         {
-            return new MyScanContainer(_spectra);
+            return this.myScanContainer;
         }
 
         IMsScanContainer IInstrumentAccess.GetMsScanContainer(int msDetectorSet)
         {
-            return new MyScanContainer(_spectra);
+            return this.myScanContainer;
         }
     }
 
     class MyInstrumentControl : IFusionControl
     {
+        private MyScanContainer myScanContainer;
+
+        public MyInstrumentControl(MyScanContainer myScanContainer)
+        {
+            this.myScanContainer = myScanContainer;
+        }
+
         public ISyringePumpControl SyringePumpControl => throw new NotImplementedException();
 
         public IInstrumentValues InstrumentValues => throw new NotImplementedException();
@@ -119,7 +127,7 @@ namespace FusionLibrary
 
         public IScans GetScans(bool exclusiveAccess)
         {
-            return new MyScanControl();
+            return new MyScanControl(this.myScanContainer);
         }
     }
 
@@ -226,15 +234,17 @@ namespace FusionLibrary
     class MyScanControl : IScans
     {
         public IParameterDescription[] PossibleParameters => new MyParameterDescription[3];
-        public List<ICustomScan> placedCustomScans = new List<ICustomScan>();
+        private MyScanContainer myScanContainer = null;
 
-        public MyScanControl()
+        public MyScanControl(MyScanContainer myScanContainer)
         {
             PossibleParameters[0] = new MyParameterDescription("CollisionEnergy", "string (0;200)", "", "The normalized collision " +
                 "energy (NCE) It is expressed as a string of values, with each value sepearted by a ';' delimiter. A maximum of 10 values can be defined.");
             PossibleParameters[1] = new MyParameterDescription("ScanRate", "Normal,Enchanced,Zoom,Rapid,Turbo", "Normal", "The scan rate of the ion trap");
             PossibleParameters[2] = new MyParameterDescription("FirstMass", "string (50;2000)", "150", "The first mass of the scan range. It is expressed as " +
                 "a string of values, with each value sepearted by a ';' delimiter. A maximum of 10 values can be defined.");
+
+            this.myScanContainer = myScanContainer;
         }
 
         public event EventHandler PossibleParametersChanged;
@@ -265,15 +275,43 @@ namespace FusionLibrary
             throw new NotImplementedException();
         }
 
-        public bool SetCustomScan(ICustomScan scan)
+        public bool SetCustomScan(ICustomScan cs)
         {
-            placedCustomScans.Add(scan);
-            int milliSecondDelay = (int) 0.25 * 1000;
-            Task.Delay(milliSecondDelay).ContinueWith(t => OnSingleProcessingDelay());
-            return true;
+            // select whether to generate ms1 or msn spectra from the read mzML data
+            List<SimpleSpectrum> spectraList = null;
+            if (cs.Values["ScanType"] == "Full")
+            {
+                spectraList = this.myScanContainer.ms1Spectra;
+            }
+            else if (cs.Values["ScanType"] == "MSn")
+            {
+                spectraList = this.myScanContainer.msnSpectra;
+            }
+
+            // if we can actually generate a custom scan ...
+            if (spectraList.Count > 0)
+            {
+                // pop a spectrum from the list
+                SimpleSpectrum current = spectraList[0];
+                spectraList.RemoveAt(0);
+
+                // send this spectrum
+                IMsScan msScan = new MyMsScan(current, cs.RunningNumber);
+                MsScanEventArgs args = new MyMsScanEventArgs(msScan);
+                this.myScanContainer.sendScan(args);
+
+                // wait for half of single processing delay
+                double delay = cs.SingleProcessingDelay / 2;
+                int milliSecondDelay = (int)delay * 1000;
+                Task.Delay(milliSecondDelay).ContinueWith(t => OnSingleProcessingDelay(msScan));
+                return true;
+
+            }
+            return false;
+
         }
 
-        private void OnSingleProcessingDelay()
+        private void OnSingleProcessingDelay(IMsScan msScan)
         {
             EventHandler handler = CanAcceptNextCustomScan;
             if (handler != null)
@@ -288,7 +326,7 @@ namespace FusionLibrary
         }
     }
 
-    internal class MyParameterDescription : IParameterDescription
+    class MyParameterDescription : IParameterDescription
     {
         public MyParameterDescription(string _name, string _selection, string _defaultValue, string _help)
         {
@@ -318,31 +356,24 @@ namespace FusionLibrary
 
     class MyScanContainer : IFusionMsScanContainer
     {
-        private SimpleSpectrum[] spectra;
-        private IMsScan lastScan;
+        public List<SimpleSpectrum> ms1Spectra = new List<SimpleSpectrum>();
+        public List<SimpleSpectrum> msnSpectra = new List<SimpleSpectrum>();
+        private IMsScan lastScan = null;
 
         public MyScanContainer(IEnumerable<SimpleSpectrum> spectra)
         {
-            this.spectra = spectra.ToArray();
-            long runningNumber = 100000;
-            for (int i = 0; i < this.spectra.Length; i++)
+            SimpleSpectrum[] allSpectra = spectra.ToArray();
+            for (int i = 0; i < allSpectra.Length; i++)
             {
-                // schedule events to be triggered, see https://stackoverflow.com/questions/545533/delayed-function-calls
-                SimpleSpectrum current = this.spectra[i];
-                int elutionTimeInMilliSecond = (int)(current.ScanStartTime * 60 * 1000);
-                IMsScan msScan = new MyMsScan(current, runningNumber+i);
-                MsScanEventArgs args = new MyMsScanEventArgs(msScan);
-                Task.Delay(elutionTimeInMilliSecond).ContinueWith(t => OnMsScanArrived(args));
-                this.lastScan = msScan;
-            }
-        }
-
-        protected virtual void OnMsScanArrived(MsScanEventArgs e)
-        {
-            EventHandler<MsScanEventArgs> handler = MsScanArrived;
-            if (handler != null)
-            {
-                handler(this, e);
+                SimpleSpectrum current = allSpectra[i];
+                if (current.MsLevel == 1)
+                {
+                    ms1Spectra.Add(current);
+                }
+                else
+                {
+                    msnSpectra.Add(current);
+                }
             }
         }
 
@@ -353,6 +384,16 @@ namespace FusionLibrary
         public IMsScan GetLastMsScan()
         {
             return this.lastScan;
+        }
+
+        public void sendScan(MsScanEventArgs e)
+        {
+            EventHandler<MsScanEventArgs> handler = MsScanArrived;
+            if (handler != null)
+            {
+                handler(this, e);
+
+            }
         }
     }
 
