@@ -4,6 +4,8 @@ import math
 import numpy as np
 from tqdm import tqdm
 
+from vimms.MassSpec import ScanParameters
+
 
 class DiaAnalyser(object):
     def __init__(self, controller, min_intensity=0):
@@ -78,7 +80,7 @@ class DiaAnalyser(object):
         if chemical_scans.size == 0:
             possible_locations = [(0, 1000)]  # TODO: Make this more general
         else:
-            locations = [scan.isolation_windows for scan in chemical_scans]
+            locations = [scan.scan_params.get(ScanParameters.ISOLATION_WINDOWS) for scan in chemical_scans]
             scan_times = [scan.rt for scan in chemical_scans]
             split_points = np.unique(np.array(list(sum(sum(sum(locations, []), []), ()))))
             split_points = np.unique(np.concatenate((split_points, self.ms1_range)))

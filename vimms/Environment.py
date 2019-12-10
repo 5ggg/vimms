@@ -174,7 +174,7 @@ class Environment(object):
             current_N, current_rt_tol, idx = self.controller._get_current_N_DEW(time)
             return current_N, current_rt_tol
         elif isinstance(self.controller, TopNController):
-            return self.controller.N, self.controller.rt_tol
+            return self.controller.N, self.controller.rt_tols
         else:
             return None, None
 

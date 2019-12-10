@@ -65,7 +65,7 @@ class TestTopNController(unittest.TestCase):
                                get_children_method=GET_MS2_BY_PEAKS)
         self.assertEqual(len(dataset), n_chems)
 
-        isolation_window = 1
+        isolation_width = 1
         N = 10
         rt_tol = 15
         mz_tol = 10
@@ -74,7 +74,7 @@ class TestTopNController(unittest.TestCase):
         # without noise
         logger.info('Without noise')
         mass_spec = IndependentMassSpectrometer(ionisation_mode, dataset, self.ps, add_noise=False)
-        controller = TopNController(ionisation_mode, N, isolation_window, mz_tol, rt_tol, min_ms1_intensity)
+        controller = TopNController(ionisation_mode, N, isolation_width, mz_tol, rt_tol, min_ms1_intensity)
         env = Environment(mass_spec, controller, min_rt, max_rt, progress_bar=True)
 
         set_log_level_warning()
@@ -89,14 +89,13 @@ class TestTopNController(unittest.TestCase):
         # with noise
         logger.info('With noise')
         mass_spec = IndependentMassSpectrometer(ionisation_mode, dataset, self.ps, add_noise=True)
-        controller = TopNController(ionisation_mode, N, isolation_window, mz_tol, rt_tol, min_ms1_intensity)
+        controller = TopNController(ionisation_mode, N, isolation_width, mz_tol, rt_tol, min_ms1_intensity)
         env = Environment(mass_spec, controller, min_rt, max_rt, progress_bar=True)
 
         set_log_level_warning()
         env.run()
         set_log_level_debug()
 
-        logger.info('Writing to mzML file')
         filename = 'multibeer_TopN_ms2Peaks_withNoise.mzML'
         out_file = os.path.join(out_dir, filename)
         env.write_mzML(out_dir, filename)
@@ -117,7 +116,7 @@ class TestHybridController(unittest.TestCase):
                                get_children_method=GET_MS2_BY_PEAKS)
         self.assertEqual(len(dataset), n_chems)
 
-        isolation_window = [1, 1, 1, 1]
+        isolation_widths = [1, 1, 1, 1]
         N = [5, 10, 15, 20]
         rt_tol = [15, 30, 60, 120]
         mz_tol = [10, 5, 15, 20]
@@ -125,7 +124,7 @@ class TestHybridController(unittest.TestCase):
         ionisation_mode = POSITIVE
 
         mass_spec = IndependentMassSpectrometer(ionisation_mode, dataset, self.ps, add_noise=True)
-        controller = HybridController(ionisation_mode, N, scan_param_changepoints, isolation_window, mz_tol, rt_tol,
+        controller = HybridController(ionisation_mode, N, scan_param_changepoints, isolation_widths, mz_tol, rt_tol,
                                       min_ms1_intensity)
         env = Environment(mass_spec, controller, min_rt, max_rt, progress_bar=True)
 
@@ -154,7 +153,7 @@ class TestROIController(unittest.TestCase):
                                get_children_method=GET_MS2_BY_SPECTRA)
         self.assertEqual(len(dataset), n_chems)
 
-        isolation_window = 1  # the isolation window in Dalton around a selected precursor ion
+        isolation_width = 1  # the isolation window in Dalton around a selected precursor ion
         N = 10
         rt_tol = 15
         mz_tol = 10
@@ -163,7 +162,7 @@ class TestROIController(unittest.TestCase):
         ionisation_mode = POSITIVE
 
         mass_spec = IndependentMassSpectrometer(ionisation_mode, dataset, self.ps, add_noise=True)
-        controller = RoiController(ionisation_mode, isolation_window, mz_tol, min_ms1_intensity,
+        controller = RoiController(ionisation_mode, isolation_width, mz_tol, min_ms1_intensity,
                                    min_roi_intensity, min_roi_length, "Top N", N, rt_tol)
         env = Environment(mass_spec, controller, min_rt, max_rt, progress_bar=True)
 

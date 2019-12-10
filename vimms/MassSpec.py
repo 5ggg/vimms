@@ -9,7 +9,7 @@ from clr import ListAssemblies
 from events import Events
 from loguru import logger
 
-from vimms.Common import adduct_transformation, POSITIVE, NEGATIVE
+from vimms.Common import adduct_transformation, POSITIVE, NEGATIVE, DEFAULT_MS1_SCAN_WINDOW
 
 
 class Peak(object):
@@ -50,9 +50,7 @@ class Scan(object):
     """
 
     def __init__(self, scan_id, mzs, intensities, ms_level, rt,
-                 scan_duration=None, isolation_windows=None,
-                 precursor_mz=None, polarity=POSITIVE,
-                 scan_params=None, parent=None):
+                 scan_duration=None, scan_params=None, parent=None):
         """
         Creates a scan
         :param scan_id: current scan id
@@ -61,9 +59,6 @@ class Scan(object):
         :param ms_level: the ms level of this scan
         :param rt: the retention time of this scan
         :param scan_duration: how long this scan takes, if known.
-        :param isolation_windows: the window to isolate precursor peak, if known
-        :param precursor_mz: the precursor m/z, if known
-        :param polarity: the polarity of the scan, either POSITIVE or NEGATIVE
         :param scan_params: the parameters used to generate this scan, if known
         :param parent: parent precursor peak, if known
         """
@@ -80,9 +75,6 @@ class Scan(object):
         self.num_peaks = len(mzs)
 
         self.scan_duration = scan_duration
-        self.isolation_windows = isolation_windows
-        self.precursor_mz = precursor_mz
-        self.polarity = polarity
         self.scan_params = scan_params
         self.parent = parent
 
@@ -99,6 +91,7 @@ class ScanParameters(object):
     # possible scan parameter names
     MS_LEVEL = 'ms_level'
     ISOLATION_WINDOWS = 'isolation_windows'
+    ISOLATION_WIDTH = 'isolation_width'
     PRECURSOR = 'precursor'
     DYNAMIC_EXCLUSION_MZ_TOL = 'mz_tol'
     DYNAMIC_EXCLUSION_RT_TOL = 'rt_tol'
@@ -130,6 +123,19 @@ class ScanParameters(object):
             return self.params[key]
         else:
             return None
+
+    def compute_isolation_windows(self):
+        """
+        Gets the full-width (DDA) isolation window around a precursor m/z
+        """
+        mz = self.get(ScanParameters.PRECURSOR).precursor_mz
+        isolation_width = self.get(ScanParameters.ISOLATION_WIDTH)
+        assert mz is not None and isolation_width is not None
+
+        mz_lower = mz - (isolation_width / 2)  # half-width isolation window, in Da
+        mz_upper = mz + (isolation_width / 2)  # half-width isolation window, in Da
+        isolation_windows = [[(mz_lower, mz_upper)]]
+        return isolation_windows
 
     def __repr__(self):
         return 'ScanParameters %s' % (self.params)
@@ -250,8 +256,8 @@ class IndependentMassSpectrometer(object):
         """
 
         # get scan param from the processing queue and do one scan
-        param = self._get_param()
-        scan = self._get_scan(self.time, param)
+        params = self._get_params()
+        scan = self._get_scan(self.time, params)
 
         # notify the controller that a new scan has been generated
         # at this point, the MS_SCAN_ARRIVED event handler in the controller is called
@@ -358,18 +364,18 @@ class IndependentMassSpectrometer(object):
     # Private methods
     ####################################################################################################################
 
-    def _get_param(self):
+    def _get_params(self):
         """
         Retrieves a new set of scan parameters from the processing queue
         :return: A new set of scan parameters from the queue if available, otherwise it returns the default scan params.
         """
         # if the processing queue is empty, then just do the repeating scan
         if len(self.processing_queue) == 0:
-            param = self.environment.get_default_scan_params()
+            params = self.environment.get_default_scan_params()
         else:
             # otherwise pop the parameter for the next scan from the queue
-            param = self.processing_queue.pop(0)
-        return param
+            params = self.processing_queue.pop(0)
+        return params
 
     def _increase_time(self, current_level, current_N, current_DEW, next_scan_param):
         # look into the queue, find out what the next scan ms_level is, and compute the scan duration
@@ -428,7 +434,7 @@ class IndependentMassSpectrometer(object):
     # Scan generation methods
     ####################################################################################################################
 
-    def _get_scan(self, scan_time, param):
+    def _get_scan(self, scan_time, params):
         """
         Constructs a scan at a particular timepoint
         :param scan_time: the timepoint
@@ -436,9 +442,14 @@ class IndependentMassSpectrometer(object):
         """
         scan_mzs = []  # all the mzs values in this scan
         scan_intensities = []  # all the intensity values in this scan
-        ms_level = param.get(ScanParameters.MS_LEVEL)
-        isolation_windows = param.get(ScanParameters.ISOLATION_WINDOWS)
-        precursor_mz = param.get(ScanParameters.PRECURSOR)
+        ms_level = params.get(ScanParameters.MS_LEVEL)
+        if ms_level == 1: # if ms1 then we scan the whole range of m/z
+            isolation_windows = [[DEFAULT_MS1_SCAN_WINDOW]]
+        else: # if ms2 then we check if the isolation window parameter is specified
+            isolation_windows = params.get(ScanParameters.ISOLATION_WINDOWS)
+            if isolation_windows is None: # if not then we compute from the precursor mz and isolation width
+                isolation_windows = params.compute_isolation_windows()
+
         scan_id = self.idx
 
         # for all chemicals that come out from the column coupled to the mass spec
@@ -477,9 +488,7 @@ class IndependentMassSpectrometer(object):
         # Note: at this point, the scan duration is not set yet because we don't know what the next scan is going to be
         # We will set it later in the get_next_scan() method after we've notified the controller that this scan is produced.
         return Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
-                    scan_duration=None, isolation_windows=isolation_windows,
-                    precursor_mz=precursor_mz, polarity=self.ionisation_mode,
-                    scan_params=param)
+                    scan_duration=None, scan_params=params)
 
     def _get_chem_indices(self, query_rt):
         rtmin_check = self.chrom_min_rts <= query_rt
@@ -656,9 +665,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             parent = None
 
         vimms_scan = Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
-                          scan_duration=None, isolation_windows=isolation_windows,
-                          precursor_mz=None, polarity=POSITIVE,
-                          scan_params=None, parent=None)
+                          scan_duration=None, scan_params=None, parent=None)
 
         self.fire_event(self.MS_SCAN_ARRIVED, vimms_scan)
         self.idx += 1

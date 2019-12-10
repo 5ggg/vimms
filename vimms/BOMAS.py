@@ -43,13 +43,13 @@ QCB_TOP_N_CONTROLLER_PARAM_DICT = {"ionisation_mode": POSITIVE,
                                    "mz_tol": 10,
                                    "min_ms1_intensity": 1.75E5,
                                    "rt_range": [(0, 1560)],
-                                   "isolation_window": 1}
+                                   "isolation_width": 1}
 
 MADELEINE_TOP_N_CONTROLLER_PARAM_DICT = {"ionisation_mode": POSITIVE,
                                          "mz_tol": 10,
                                          "min_ms1_intensity": 1.75E5,
                                          "rt_range": [(0, 600)],
-                                         "isolation_window": 1}
+                                         "isolation_width": 1}
 
 QCB_SCORE_PARAM_DICT = {'min_ms1_intensity': 0,
                         'matching_mz_tol': 30,
@@ -188,7 +188,7 @@ class BaseOptimiser(object):
         if controller_method == 'TopNController':
             controller = TopNController(controller_param_dict["ionisation_mode"],
                                         flex_controller_param_dict['N'],
-                                        controller_param_dict["isolation_window"],
+                                        controller_param_dict["isolation_width"],
                                         controller_param_dict["mz_tol"],
                                         flex_controller_param_dict['DEW'],
                                         controller_param_dict["min_ms1_intensity"])
