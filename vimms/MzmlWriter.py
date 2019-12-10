@@ -111,9 +111,6 @@ class MzmlWriter(object):
                     precursor = scan_precursor[scan.scan_id]
                 self._write_scan(writer, scan, precursor)
 
-    def _get_scan_id(self, scan_id):
-        return scan_id
-
     def _write_scan(self, out, scan, precursor):
         assert scan.num_peaks > 0
         label = 'MS1 Spectrum' if scan.ms_level == 1 else 'MSn Spectrum'
@@ -123,7 +120,7 @@ class MzmlWriter(object):
                 "mz": precursor.precursor_mz,
                 "intensity": precursor.precursor_intensity,
                 "charge": precursor.precursor_charge,
-                "spectrum_reference": self._get_scan_id(precursor.precursor_scan_id),
+                "spectrum_reference": precursor.precursor_scan_id,
                 "activation": ["HCD", {"collision energy": 25.0}]
             }
         lowest_observed_mz = min(scan.mzs)
@@ -131,10 +128,11 @@ class MzmlWriter(object):
         bp_pos = np.argmax(scan.intensities)
         bp_intensity = scan.intensities[bp_pos]
         bp_mz = scan.mzs[bp_pos]
+        scan_id = scan.scan_id
 
         out.write_spectrum(
             scan.mzs, scan.intensities,
-            id=self._get_scan_id(scan.scan_id),
+            id=scan_id,
             centroided=True,
             scan_start_time=scan.rt / 60.0,
             scan_window_list=[DEFAULT_MS1_SCAN_WINDOW],
