@@ -351,3 +351,11 @@ def load_scores(colnames, peak_files,  ms2_dir, dataset_file, ms1_picked_peaks_f
         results.loc[len(results)] = new_entry
         logger.debug(i)
     return results
+
+
+def GetScaledValues(n_samples, theta_ranges):
+    values = lhs(len(theta_ranges), samples = n_samples, criterion='center')
+    scaled_values = np.array([(
+    values[:, i] * (theta_ranges[i][1] - theta_ranges[i][0]) + theta_ranges[i][0]).tolist()
+                             for i in range(len(theta_ranges))])
+    return scaled_values

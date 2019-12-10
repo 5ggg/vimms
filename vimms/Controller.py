@@ -441,7 +441,7 @@ class RoiController(TopNController):
 
         # ROI stuff
         self.min_roi_intensity = min_roi_intensity
-        self.mz_units = 'Da'
+        self.mz_units = 'ppm'
         self.min_roi_length = min_roi_length
 
         # Score stuff
@@ -476,11 +476,11 @@ class RoiController(TopNController):
             scores = self._get_scores(self.score_method, self.score_params)
             idx = np.argsort(scores)[::-1]
             for i in idx:
-                mz = self.current_roi_mzs[i]
+                mz = self.current_roi_mzs[i] # TODO: this needs to be updated to take last ROI time
                 intensity = self.current_roi_intensities[i]
 
                 # stopping criteria is done based on the scores
-                if scores[i] <= 0: # TODO: this takes ouit
+                if scores[i] <= 0:
                     logger.debug('Time %f Top-%d ions have been selected' % (rt, self.N))
                     break
 
