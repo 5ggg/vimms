@@ -9,7 +9,7 @@ from clr import ListAssemblies
 from events import Events
 from loguru import logger
 
-from vimms.Common import adduct_transformation, POSITIVE, NEGATIVE, DEFAULT_MS1_SCAN_WINDOW
+from vimms.Common import adduct_transformation, DEFAULT_MS1_SCAN_WINDOW, DEFAULT_IAPI_SINGLE_PROCESSING_DELAY
 
 
 class Peak(object):
@@ -88,15 +88,27 @@ class ScanParameters(object):
     This object is usually created by the controllers.
     """
 
-    # possible scan parameter names
     MS_LEVEL = 'ms_level'
+    COLLISION_ENERGY = 'collision_energy'
+    POLARITY = 'polarity'
+    FIRST_MASS = 'first_mass'
+    LAST_MASS = 'last_mass'
+
+    # this is used for DIA-based controllers to specify which windows to fragment
+    # TODO: how to translate this to IAPI custom scan parameters?
     ISOLATION_WINDOWS = 'isolation_windows'
+
+    # precursor m/z and isolation width have to be specified together for DDA-based controllers
+    PRECURSOR_MZ = 'precursor_mz'
     ISOLATION_WIDTH = 'isolation_width'
-    PRECURSOR = 'precursor'
-    DYNAMIC_EXCLUSION_MZ_TOL = 'mz_tol'
-    DYNAMIC_EXCLUSION_RT_TOL = 'rt_tol'
-    TIME = 'time'
-    N = 'N'
+
+    # used in Top-N, hybrid and ROI controllers to perform dynamic exclusion
+    DYNAMIC_EXCLUSION_MZ_TOL = 'dew_mz_tol'
+    DYNAMIC_EXCLUSION_RT_TOL = 'dew_rt_tol'
+
+    # only used by the hybrid controller for now, since its Top-N may change depending on time
+    # for other DDA controllers it's always the same throughout the whole run, so we don't send this parameter
+    CURRENT_TOP_N = 'current_top_N'
 
     def __init__(self):
         """
@@ -128,7 +140,7 @@ class ScanParameters(object):
         """
         Gets the full-width (DDA) isolation window around a precursor m/z
         """
-        mz = self.get(ScanParameters.PRECURSOR).precursor_mz
+        mz = self.get(ScanParameters.PRECURSOR_MZ).precursor_mz
         isolation_width = self.get(ScanParameters.ISOLATION_WIDTH)
         assert mz is not None and isolation_width is not None
 
@@ -182,6 +194,9 @@ class ExclusionItem(object):
         self.to_mz = to_mz
         self.from_rt = from_rt
         self.to_rt = to_rt
+
+    def __repr__(self):
+        return 'ExclusionItem mz=(%f, %f) rt=(%f-%f)' % (self.from_mz, self.to_mz, self.from_rt, self.to_rt)
 
 
 class IndependentMassSpectrometer(object):
@@ -418,7 +433,8 @@ class IndependentMassSpectrometer(object):
         """
         if next_scan_param is not None:
             # Only the hybrid controller sends these N and DEW parameters. For other controllers they will be None
-            next_N = next_scan_param.get(ScanParameters.N)
+            # because N and DEW will never change throughout a run
+            next_N = next_scan_param.get(ScanParameters.CURRENT_TOP_N)
             next_DEW = next_scan_param.get(ScanParameters.DYNAMIC_EXCLUSION_RT_TOL)
         else:
             next_N = None
@@ -443,11 +459,11 @@ class IndependentMassSpectrometer(object):
         scan_mzs = []  # all the mzs values in this scan
         scan_intensities = []  # all the intensity values in this scan
         ms_level = params.get(ScanParameters.MS_LEVEL)
-        if ms_level == 1: # if ms1 then we scan the whole range of m/z
+        if ms_level == 1:  # if ms1 then we scan the whole range of m/z
             isolation_windows = [[DEFAULT_MS1_SCAN_WINDOW]]
-        else: # if ms2 then we check if the isolation window parameter is specified
+        else:  # if ms2 then we check if the isolation window parameter is specified
             isolation_windows = params.get(ScanParameters.ISOLATION_WINDOWS)
-            if isolation_windows is None: # if not then we compute from the precursor mz and isolation width
+            if isolation_windows is None:  # if not then we compute from the precursor mz and isolation width
                 isolation_windows = params.compute_isolation_windows()
 
         scan_id = self.idx
@@ -594,6 +610,10 @@ class IndependentMassSpectrometer(object):
 
 
 class IAPIMassSpectrometer(IndependentMassSpectrometer):
+    """
+    A class that can be used to communicate with Thermo Fusion mass spectrometer
+    via IAPI (https://github.com/thermofisherlsms/iapi)
+    """
 
     def __init__(self, ionisation_mode, ref_dir, filename=None, show_console_logs=True):
         super().__init__(ionisation_mode, [], None, add_noise=False)
@@ -615,10 +635,9 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         assert 'FusionLibrary' in short
         self.filename = filename
         self.show_console_logs = show_console_logs
+        self.running_number = 100000
         self.fusion_bridge = None
-
         self.scan_number_to_params = {}
-        self.scan_number_to_scans = {}
 
     def run(self):
         self.start_time = time.time()
@@ -638,14 +657,11 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         atexit.register(self.fusion_bridge.CloseDown)  # called when the current process exits
         scan_handler_delegate = FusionBridge.UserScanArriveDelegate(self.step)
         state_changed_delegate = FusionBridge.UserStateChangedDelegate(self.state_changed_handler)
-        custom_scan_delegate = FusionBridge.UserCreateCustomScanDelegate(self.custom_scan_handler)
+        custom_scan_delegate = FusionBridge.UserCreateCustomScanDelegate(self._send_custom_scan)
         self.fusion_bridge.SetEventHandlers(scan_handler_delegate, state_changed_delegate, custom_scan_delegate)
 
         # send the initial custom scan to start the custom scan generation process
-        res = self._send_custom_scan()
-        if res is not None:
-            running_number, params = res
-            self.scan_number_to_params[running_number] = params
+        self._send_custom_scan()
 
     def step(self, iapi_scan):
         """
@@ -655,7 +671,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         """
         # the custom scan id are stored in the trailer, so we try to retrieve that and set it as the scan id
         # if it isn't set, then the default value is 0, in which case we use the scan number in the header as scan id
-        scan_id = int(self._get_access_id(iapi_scan))
+        scan_id = int(self._get_custom_scan_number(iapi_scan))
         if scan_id == 0:
             scan_id = int(iapi_scan.Header['Scan'])
 
@@ -663,35 +679,16 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         scan_mzs = np.array([c.Mz for c in iapi_scan.Centroids])
         scan_intensities = np.array([c.Intensity for c in iapi_scan.Centroids])
         ms_level = int(iapi_scan.Header['MSOrder'])
-        polarity = POSITIVE if iapi_scan.Header['Polarity'] == '0' else NEGATIVE
 
-        precursor_mz = None
-        isolation_windows = None  # specified in Vinny's nested format
-        dynamic_exclusion_mz_tol = None
-        dynamic_exclusion_rt_tol = None
-        parent = None
-
-        # populate ms2 values
-        # TODO: we need to extract this info from the IAPI Scan Header or keep track of this internally somehow
-        if ms_level > 1:
-            precursor_mz = None
-            isolation_windows = None  # specified in Vinny's nested format
-            scan_params = None  # TODO: the scan parameters used to generate this scan. We should keep track of this
-            dynamic_exclusion_mz_tol = None  # TODO: can be extracted from the scan_params
-            dynamic_exclusion_rt_tol = None  # TODO: can be extracted from the scan_params
-            parent = None
+        scan_params = self.scan_number_to_params[scan_id]
+        parent = None  # TODO: how to set this???
+        scan_duration = None  # FIXME: the raw data shows the scan duration, but how to get it from IAPI??
 
         vimms_scan = Scan(scan_id, scan_mzs, scan_intensities, ms_level, scan_time,
-                          scan_duration=None, scan_params=None, parent=None)
+                          scan_duration=scan_duration, scan_params=scan_params, parent=parent)
 
         self.fire_event(self.MS_SCAN_ARRIVED, vimms_scan)
         self.idx += 1
-
-    def custom_scan_handler(self):
-        res = self._send_custom_scan()
-        if res is not None:
-            running_number, params = res
-            self.scan_number_to_params[running_number] = params
 
     def state_changed_handler(self, state):
         logger.debug('state_changed_handler called')
@@ -714,33 +711,59 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         """
         # get one scan param from the mass spec processing queue and send it over
         params = self._get_params()
-        if params is not None:
-            ms_level = params.get(ScanParameters.MS_LEVEL)
-            precursor_mass = 0.0
-            if ms_level == 2:
-                precursor_mass = params.get(ScanParameters.PRECURSOR).precursor_mz
-            isolation_width = 0.7
-            collision_energy = 35.0
-            polarity = POSITIVE
-            first_mass = 50.0
-            last_mass = 600.0
-            single_processing_delay = 0.50
-            running_number = self.fusion_bridge.CreateCustomScan(precursor_mass, isolation_width, collision_energy, ms_level,
-                                                polarity, first_mass, last_mass, single_processing_delay)
-            if ms_level == 2:
-                logger.debug('Sent custom scan %d with parameters %s' % (running_number, str(params)))
-            return running_number, params
-        else:
+        if params is None:
             return None
 
-    def _get_access_id(self, iapi_scan):
+        ms_level = params.get(ScanParameters.MS_LEVEL)
+        precursor_mass = 0.0
+        if ms_level == 2:
+            precursor_mass = params.get(ScanParameters.PRECURSOR_MZ).precursor_mz
+            assert precursor_mass is not None
+
+        isolation_width = params.get(ScanParameters.ISOLATION_WIDTH)
+        collision_energy = params.get(ScanParameters.COLLISION_ENERGY)
+        polarity = params.get(ScanParameters.POLARITY)
+        first_mass = params.get(ScanParameters.FIRST_MASS)
+        last_mass = params.get(ScanParameters.LAST_MASS)
+
+        assert collision_energy is not None
+        assert polarity is not None
+        assert first_mass is not None
+        assert last_mass is not None
+
+        single_processing_delay = DEFAULT_IAPI_SINGLE_PROCESSING_DELAY
+
+        # FIXME: can be dangerous if a new custom scan is received but running number has not been incremented!!
+        current_running_number = self.running_number
+        self.running_number += 1
+
+        assert current_running_number not in self.scan_number_to_params
+        self.scan_number_to_params[current_running_number] = params
+
+        logger.debug('Sending custom scan %d with parameters %s' % (current_running_number, str(params)))
+        success = self.fusion_bridge.CreateCustomScan(current_running_number, precursor_mass, isolation_width,
+                                                      collision_energy, ms_level, polarity, first_mass, last_mass,
+                                                      single_processing_delay)
+        # if not success:
+        #     logger.warning('Failed to send custom scan %d with parameters %s, please check the logs!!' % (
+        #     current_running_number, str(params)))
+
+    def _get_custom_scan_number(self, iapi_scan):
         """
-        Extracts the access id from the trailer data of an IAPI scan
+        Extracts the custom scan number from an IAPI scan
         :param iapi_scan: an IAPI scan
-        :return: the access id
+        :return: the custom scan number
         """
+
+        # according to the documentation, the custom scan number is set as access id in the trailer data
+        # below shows how to get the access id from the trailer data of an IAPI scan
+
         # noinspection PyUnresolvedReferences
-        from System import String
-        dummy_out = String('')
-        returned_val, real_out = iapi_scan.Trailer.TryGetValue('Access id:', dummy_out)
+        # from System import String
+        # dummy_out = String('')
+        # returned_val, real_out = iapi_scan.Trailer.TryGetValue('Access id:', dummy_out)
+        # return real_out
+
+        # alternatively it seems that we can also get it from the master scan field of the header
+        real_out = int(iapi_scan.Header['MasterScan'])
         return real_out

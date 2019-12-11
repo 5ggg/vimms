@@ -4,7 +4,7 @@ from pathlib import Path
 from loguru import logger
 from tqdm import tqdm
 
-from vimms.Common import DEFAULT_MS1_SCAN_WINDOW, POSITIVE
+from vimms.Common import DEFAULT_MS1_SCAN_WINDOW, DEFAULT_COLLISION_ENERGY, DEFAULT_ISOLATION_WIDTH
 from vimms.Controller import TopNController, HybridController
 from vimms.MassSpec import ScanParameters, IndependentMassSpectrometer
 from vimms.MzmlWriter import MzmlWriter
@@ -30,6 +30,11 @@ class Environment(object):
         self.default_scan_params = ScanParameters()
         self.default_scan_params.set(ScanParameters.MS_LEVEL, 1)
         self.default_scan_params.set(ScanParameters.ISOLATION_WINDOWS, [[DEFAULT_MS1_SCAN_WINDOW]])
+        self.default_scan_params.set(ScanParameters.ISOLATION_WIDTH, DEFAULT_ISOLATION_WIDTH)
+        self.default_scan_params.set(ScanParameters.COLLISION_ENERGY, DEFAULT_COLLISION_ENERGY)
+        self.default_scan_params.set(ScanParameters.POLARITY, self.mass_spec.ionisation_mode)
+        self.default_scan_params.set(ScanParameters.FIRST_MASS, DEFAULT_MS1_SCAN_WINDOW[0])
+        self.default_scan_params.set(ScanParameters.LAST_MASS, DEFAULT_MS1_SCAN_WINDOW[1])
         self.out_dir = out_dir
         self.out_file = out_file
 
@@ -196,6 +201,8 @@ class IAPIEnvironment(Environment):
         self.mass_spec.reset()
         self.controller.reset()
         self._set_initial_values()
+        self.last_time = time.time()
+        self.stop_time = self.last_time + self.max_time
 
         # register event handlers from the controller
         self.mass_spec.register_event(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.add_scan)
@@ -208,9 +215,6 @@ class IAPIEnvironment(Environment):
 
         self.mass_spec.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING)
         self.mass_spec.run()
-
-        self.last_time = time.time()
-        self.stop_time = self.last_time + self.max_time
 
     def add_scan(self, scan):
         # stop event handling if stop_time has been reached

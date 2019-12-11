@@ -25,7 +25,6 @@ namespace FusionLibrary
         private IFusionMsScanContainer ScanContainer { get; set; }
         private IFusionControl InstrumentControl { get; set; }
         public IScans ScanControl { get; set; }
-        private long runningNumber = 100000;    // start with an offset to make sure it's "us"
 
         // store the user-passed callback here as delegates
         private UserScanArriveDelegate scanHandler;
@@ -186,18 +185,17 @@ namespace FusionLibrary
             }
         }
 
-        public long CreateCustomScan(double precursorMass, double isolationWidth, double collisionEnergy, int msLevel,
+        public bool CreateCustomScan(long runningNumber, double precursorMass, double isolationWidth, double collisionEnergy, int msLevel,
             string polarity, double firstMass, double lastMass, double singleProcessingDelay)
         {
-            WriteLog(String.Format("Placing a custom scan (runningNumber={0}, singleProcessingDelay={1})", this.runningNumber, singleProcessingDelay));
+            WriteLog(String.Format("Placing a custom scan (runningNumber={0}, singleProcessingDelay={1})", runningNumber, singleProcessingDelay));
 
             // TODO: validate input 
 
-            long initialRunningNumber = this.runningNumber;
             if (ScanControl.PossibleParameters.Length > 0)
             {
                 ICustomScan cs = ScanControl.CreateCustomScan();
-                cs.RunningNumber = this.runningNumber++;
+                cs.RunningNumber = runningNumber;
 
                 // Allow an extra delay of 500 ms, we will answer as fast as possible, so this is a maximum value.
                 cs.SingleProcessingDelay = singleProcessingDelay;
@@ -238,7 +236,7 @@ namespace FusionLibrary
                     if (!ScanControl.SetCustomScan(cs))
                     {
                         WriteLog(String.Format("FAILED to place a custom scan (runningNumber={0}), connection to service broken!!", cs.RunningNumber));
-                        return -1;
+                        return false;
                     }
                     else
                     {
@@ -250,20 +248,20 @@ namespace FusionLibrary
                         {
                             WriteLog(String.Format("Successfully placed a custom MSn scan (runningNumber={0})", cs.RunningNumber));
                         }
-                        return cs.RunningNumber;
+                        return true;
                     }
                 }
                 catch (Exception e)
                 {
                     WriteLog(String.Format("FAILED to place a custom scan (runningNumber={0}) due to {1}!!", cs.RunningNumber, e.Message));
                     WriteLog(String.Format("Stacktrace: {0}", e.StackTrace));
-                    return -1;
+                    throw;
                 }
             }
             else
             {
-                WriteLog(String.Format("FAILED to place a custom scan (runningNumber={0}), no parameters available!!", initialRunningNumber));
-                return -1;
+                WriteLog(String.Format("FAILED to place a custom scan (runningNumber={0}), no parameters available!!", runningNumber));
+                return false;
             }
         }
 

@@ -18,11 +18,11 @@ out_dir = Path(dir_path, 'results')
 
 ROI_Sources = [str(Path(base_dir, 'beer_t10_simulator_files'))]
 min_ms1_intensity = 1.75E5
-rt_range = [(0, 300)]
+rt_range = [(0, 1200)]
 min_rt = rt_range[0][0]
 max_rt = rt_range[0][1]
 mz_range = [(0, 1050)]
-n_chems = 100
+n_chems = 500
 
 
 class TestMS1Controller(unittest.TestCase):

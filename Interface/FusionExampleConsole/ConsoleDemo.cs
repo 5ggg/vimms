@@ -26,14 +26,13 @@ namespace FusionExampleConsole
             // create scan arrive user event handler
             FusionBridge.UserScanArriveDelegate userScanHandler = (IMsScan scan) =>
             {
-                string accessId = null;
-                scan.Trailer.TryGetValue("Access id:", out accessId);
+                string runNumber = scan.Header["MasterScan"];
                 string scanNumber = scan.Header["Scan"];
 
                 fusionBridge.WriteLog(String.Format("userScanHandler (scan number={0}, runningNumber={1}) starts", 
-                    scanNumber, accessId));
+                    scanNumber, runNumber));
                 fusionBridge.WriteLog(String.Format("userScanHandler (scan number={0}, runningNumber={1}) ends",
-                    scanNumber, accessId));
+                    scanNumber, runNumber));
             };
 
             // create user state changed event handler
@@ -54,14 +53,16 @@ namespace FusionExampleConsole
             double firstMass = 50.0;
             double lastMass = 600.0;
             double singleProcessingDelay = 0.50;
+            long runningNumber = 100000;
             FusionBridge.UserCreateCustomScanDelegate userCreateCustomScanHandler = () =>
             {
                 fusionBridge.WriteLog("userCreateCustomScanHandler starts");
                 if (precursorMass < endMz)
                 {
                     precursorMass += 0.02;
-                    fusionBridge.CreateCustomScan(precursorMass, isolationWidth, collisionEnergy, msLevel, polarity, 
+                    fusionBridge.CreateCustomScan(runningNumber, precursorMass, isolationWidth, collisionEnergy, msLevel, polarity, 
                         firstMass, lastMass, singleProcessingDelay);
+                    runningNumber++;
                 }
                 fusionBridge.WriteLog("userCreateCustomScanHandler ends");
             };
@@ -70,8 +71,9 @@ namespace FusionExampleConsole
             fusionBridge.SetEventHandlers(userScanHandler, userStateChangeHandler, userCreateCustomScanHandler);
 
             // send the initial custom scan
-            fusionBridge.CreateCustomScan(precursorMass, isolationWidth, collisionEnergy, msLevel, polarity,
+            fusionBridge.CreateCustomScan(runningNumber, precursorMass, isolationWidth, collisionEnergy, msLevel, polarity,
                 firstMass, lastMass, singleProcessingDelay);
+            runningNumber++;
             Console.ReadLine();
 
         }
