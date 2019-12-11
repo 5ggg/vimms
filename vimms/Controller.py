@@ -1,12 +1,13 @@
 import bisect
 import math
+import time
 from collections import defaultdict
 
 import numpy as np
 import pylab as plt
 from loguru import logger
 
-from vimms.Common import POSITIVE, DEFAULT_MS1_SCAN_WINDOW
+from vimms.Common import POSITIVE, DEFAULT_MS1_SCAN_WINDOW, DEFAULT_MSN_SCAN_WINDOW, DEFAULT_COLLISION_ENERGY
 from vimms.DIA import DiaWindows
 from vimms.MassSpec import ScanParameters, ExclusionItem
 from vimms.Roi import match, Roi
@@ -203,7 +204,7 @@ class TopNController(Controller):
 
                 # create a new ms2 scan parameter to be sent to the mass spec
                 dda_scan_params = self._get_dda_scan_param(mz, intensity, self.isolation_width,
-                                                           self.mz_tols, self.rt_tols)
+                                                           self.mz_tols, self.rt_tols, DEFAULT_COLLISION_ENERGY)
                 new_tasks.append(dda_scan_params)
                 fragmented_count += 1
 
@@ -225,15 +226,15 @@ class TopNController(Controller):
         self.exclusion_list = []
         self.precursor_information = defaultdict(list)
 
-    def _get_dda_scan_param(self, mz, intensity, isolation_width, mz_tol, rt_tol):
+    def _get_dda_scan_param(self, mz, intensity, isolation_width, mz_tol, rt_tol, collision_energy):
         dda_scan_params = ScanParameters()
         dda_scan_params.set(ScanParameters.MS_LEVEL, 2)
 
         # create precursor object, assume it's all singly charged
-        precursor_charge = +1 if (self.ionisation_mode == POSITIVE) else -1
+        precursor_charge = +1 if (self.environment.mass_spec.ionisation_mode == POSITIVE) else -1
         precursor = Precursor(precursor_mz=mz, precursor_intensity=intensity,
                               precursor_charge=precursor_charge, precursor_scan_id=self.last_ms1_scan.scan_id)
-        dda_scan_params.set(ScanParameters.PRECURSOR, precursor)
+        dda_scan_params.set(ScanParameters.PRECURSOR_MZ, precursor)
 
         # set the full-width isolation width, in Da
         dda_scan_params.set(ScanParameters.ISOLATION_WIDTH, isolation_width)
@@ -241,6 +242,12 @@ class TopNController(Controller):
         # define dynamic exclusion parameters
         dda_scan_params.set(ScanParameters.DYNAMIC_EXCLUSION_MZ_TOL, mz_tol)
         dda_scan_params.set(ScanParameters.DYNAMIC_EXCLUSION_RT_TOL, rt_tol)
+
+        # define other fragmentation parameters
+        dda_scan_params.set(ScanParameters.COLLISION_ENERGY, collision_energy)
+        dda_scan_params.set(ScanParameters.POLARITY, self.environment.mass_spec.ionisation_mode)
+        dda_scan_params.set(ScanParameters.FIRST_MASS, DEFAULT_MSN_SCAN_WINDOW[0])
+        dda_scan_params.set(ScanParameters.LAST_MASS, DEFAULT_MSN_SCAN_WINDOW[1])
         return dda_scan_params
 
     def _add_precursor_info(self, scan):
@@ -251,7 +258,7 @@ class TopNController(Controller):
         :param scan: the newly generated scan
         :return: None
         """
-        precursor = scan.scan_params.get(ScanParameters.PRECURSOR)
+        precursor = scan.scan_params.get(ScanParameters.PRECURSOR_MZ)
         if scan.ms_level >= 2 and precursor is not None:
             isolation_windows = scan.scan_params.compute_isolation_windows()
             iso_min = isolation_windows[0][0][0] # half-width isolation window, in Da
@@ -269,8 +276,13 @@ class TopNController(Controller):
         :param scan: the newly generated scan
         :return: None
         """
-        current_time = scan.rt + scan.scan_duration
-        precursor = scan.scan_params.get(ScanParameters.PRECURSOR)
+        # FIXME: maybe not correct, see the step() method in IAPIMassSpec class
+        if scan.scan_duration is not None:
+            current_time = scan.rt + scan.scan_duration
+        else:
+            current_time = time.time() - self.environment.mass_spec.start_time
+
+        precursor = scan.scan_params.get(ScanParameters.PRECURSOR_MZ)
         if scan.ms_level >= 2 and precursor is not None:
             # add dynamic exclusion item to the exclusion list to prevent the same precursor ion being fragmented
             # multiple times in the same mz and rt window
@@ -395,14 +407,14 @@ class HybridController(TopNController):
                         # create a new ms2 scan parameter to be sent to the mass spec
                         dda_scan_params = self._get_dda_scan_param(mz + purity_shift_amounts[purity_idx], intensity,
                                                                    current_isolation_width,
-                                                                   current_mz_tol, current_rt_tol)
+                                                                   current_mz_tol, current_rt_tol, DEFAULT_COLLISION_ENERGY)
                         new_tasks.append(dda_scan_params)
                         fragmented_count += 1
                         # TODO: need to work out what we want to do here
                 else:
                     # create a new ms2 scan parameter to be sent to the mass spec
                     dda_scan_params = self._get_dda_scan_param(mz, intensity, current_isolation_width,
-                                                               current_mz_tol, current_rt_tol)
+                                                               current_mz_tol, current_rt_tol, DEFAULT_COLLISION_ENERGY)
                     new_tasks.append(dda_scan_params)
                     fragmented_count += 1
 
@@ -487,7 +499,7 @@ class RoiController(TopNController):
 
                 # create a new ms2 scan parameter to be sent to the mass spec
                 dda_scan_params = self._get_dda_scan_param(mz, intensity, self.isolation_width,
-                                                           self.mz_tols, self.rt_tols)
+                                                           self.mz_tols, self.rt_tols, DEFAULT_COLLISION_ENERGY)
                 new_tasks.append(dda_scan_params)
 
                 # set this ms1 scan as has been processed
@@ -628,7 +640,7 @@ class TestController(TopNController):
 
                     # create a new ms2 scan parameter to be sent to the mass spec
                     dda_scan_params = self._get_dda_scan_param(mz, intensity, self.isolation_width,
-                                                               self.mz_tols, self.rt_tols)
+                                                               self.mz_tols, self.rt_tols, DEFAULT_COLLISION_ENERGY)
                     new_tasks.append(dda_scan_params)
                     fragmented_count += 1
 

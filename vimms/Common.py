@@ -22,9 +22,23 @@ N_PEAKS = 'n_peaks'
 SCAN_DURATION = 'scan_duration'
 POSITIVE = 'Positive'
 NEGATIVE = 'Negative'
-DEFAULT_MS1_SCAN_WINDOW = (0, 1e3)
+DEFAULT_MS1_SCAN_WINDOW = (50.0, 1000.0)
+DEFAULT_MSN_SCAN_WINDOW = (50.0, 600.0)
+DEFAULT_ISOLATION_WIDTH = 0.7
 CHEM_DATA = 'data'
 CHEM_NOISE = 'noise'
+
+DEFAULT_IAPI_SINGLE_PROCESSING_DELAY = 0.50
+
+# Note: In Fusion bridge (C#), the analyzer is hardcoded to Orbitrap and activation type to HCD.
+# Based on stefan's recommendations:
+#     Activation Type:
+#         - HCD for Orbitrap
+#         - CID for IonTrap
+#     Collision energy:
+#         - HCD 20 – 25
+#         - CID 30 - 35
+DEFAULT_COLLISION_ENERGY = 25
 
 PROTON_MASS = 1.00727645199076
 

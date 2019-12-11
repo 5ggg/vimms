@@ -456,7 +456,7 @@ namespace FusionLibrary
             this.Header["ScanData"] = "";
             this.Header["Segments"] = "";
             this.Header["Monoisotopic"] = "";
-            this.Header["MasterScan"] = "";
+            this.Header["MasterScan"] = runningNumber.ToString();
             this.Header["FirstMass"] = "";
             this.Header["LastMass"] = "";
             this.Header["Checksum"] = "";
