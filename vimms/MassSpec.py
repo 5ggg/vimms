@@ -3,9 +3,7 @@ import math
 import sys
 import time
 
-import clr
 import numpy as np
-from clr import ListAssemblies
 from events import Events
 from loguru import logger
 
@@ -617,6 +615,13 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
 
     def __init__(self, ionisation_mode, ref_dir, filename=None, show_console_logs=True):
         super().__init__(ionisation_mode, [], None, add_noise=False)
+
+        # import PythonNet. We will use this to communicate with Thermo IAPI
+
+        # noinspection PyUnresolvedReferences
+        import clr
+        # noinspection PyUnresolvedReferences
+        from clr import ListAssemblies
 
         # add IAPI .dll location to Python path.
         if ref_dir not in sys.path:
