@@ -49,6 +49,11 @@ Example Notebooks
 
 Notebooks that demonstrate how to use ViMMS are available in the [examples](https://github.com/sdrogers/vimms/tree/master/examples) folder of this repository.
 
+Test Cases
+--------
+
+Additionally unit tests that demonstrate how simulations can be run are available in the `tests` folder. You can use the script `run_tests.sh` or `run_tests.bat` to run them.
+
 Binder
 --------
 
