@@ -756,6 +756,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             logger.warning(msg)
             self.close()
 
+        logger.debug('Successfully sent custom scan %d' % (current_running_number))
     def _get_custom_scan_number(self, iapi_scan):
         """
         Extracts the custom scan number from an IAPI scan

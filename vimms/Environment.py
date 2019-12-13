@@ -188,6 +188,7 @@ class IAPIEnvironment(Environment):
 
     def __init__(self, mass_spec, controller, max_time, progress_bar=True, out_dir=None, out_file=None):
         super().__init__(mass_spec, controller, 0, max_time, progress_bar, out_dir, out_file)
+        self.start_time = None
         self.stop_time = None
         self.last_time = None
         self.pbar = tqdm(total=max_time, initial=0) if self.progress_bar else None
@@ -201,8 +202,9 @@ class IAPIEnvironment(Environment):
         self.mass_spec.reset()
         self.controller.reset()
         self._set_initial_values()
-        self.last_time = time.time()
-        self.stop_time = self.last_time + self.max_time
+        self.start_time = time.time()
+        self.last_time = self.start_time
+        self.stop_time = self.start_time + self.max_time
 
         # register event handlers from the controller
         self.mass_spec.register_event(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.add_scan)
@@ -239,11 +241,15 @@ class IAPIEnvironment(Environment):
         if pbar is not None:
             current_time = time.time()
             elapsed = current_time - self.last_time
+            now = current_time - self.start_time
             self.last_time = current_time
+
+            # FIXME: mabye not the best thing to do
+            self.mass_spec.time = now
             N, DEW = self._get_N_DEW(self.mass_spec.time)
             if N is not None and DEW is not None:
-                msg = '(%.3fs) ms_level=%d N=%d DEW=%d' % (elapsed, scan.ms_level, N, DEW)
+                msg = '(%.3fs) ms_level=%d N=%d DEW=%d' % (self.mass_spec.time, scan.ms_level, N, DEW)
             else:
-                msg = '(%.3fs) ms_level=%d' % (elapsed, scan.ms_level)
+                msg = '(%.3fs) ms_level=%d' % (self.mass_spec.time, scan.ms_level)
             pbar.update(elapsed)
             pbar.set_description(msg)
