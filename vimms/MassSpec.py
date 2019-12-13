@@ -659,7 +659,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         self.fusion_bridge = FusionBridge(self.filename, self.show_console_logs)
 
         logger.debug('Attaching event handlers')
-        atexit.register(self.fusion_bridge.CloseDown)  # called when the current process exits
+        atexit.register(self.close)  # called when the current process exits
         scan_handler_delegate = FusionBridge.UserScanArriveDelegate(self.step)
         state_changed_delegate = FusionBridge.UserStateChangedDelegate(self.state_changed_handler)
         custom_scan_delegate = FusionBridge.UserCreateCustomScanDelegate(self._send_custom_scan)
@@ -705,9 +705,10 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
 
     def close(self):
         super().close()
-        logger.debug('Closing fusion bridge')
-        self.fusion_bridge.CloseDown()
-        self.fusion_bridge = None
+        logger.warning('Closing fusion bridge')
+        if self.fusion_bridge is not None:
+            self.fusion_bridge.CloseDown()
+            self.fusion_bridge = None
 
     def _send_custom_scan(self):
         """
@@ -749,9 +750,11 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         success = self.fusion_bridge.CreateCustomScan(current_running_number, precursor_mass, isolation_width,
                                                       collision_energy, ms_level, polarity, first_mass, last_mass,
                                                       single_processing_delay)
-        # if not success:
-        #     logger.warning('Failed to send custom scan %d with parameters %s, please check the logs!!' % (
-        #     current_running_number, str(params)))
+        if not success:
+            msg = 'Failed to send custom scan %d with parameters %s, please check the logs!!' % (
+                current_running_number, str(params))
+            logger.warning(msg)
+            self.close()
 
     def _get_custom_scan_number(self, iapi_scan):
         """
