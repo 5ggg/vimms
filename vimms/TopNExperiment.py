@@ -2,9 +2,10 @@ import os
 
 from loguru import logger
 
-from vimms.Common import save_obj, create_if_not_exist
+from vimms.Common import save_obj, create_if_not_exist, set_log_level_debug, set_log_level_warning
 from vimms.Controller import TopNController
 from vimms.DataGenerator import DataSource, PeakSampler
+from vimms.Environment import Environment
 from vimms.MassSpec import IndependentMassSpectrometer
 
 
@@ -39,10 +40,14 @@ def run_experiment(param):
             peak_sampler = get_peak_sampler(mzml_path, fragfile, min_rt, max_rt)
 
         mass_spec = IndependentMassSpectrometer(param['ionisation_mode'], param['data'], peak_sampler)
-        controller = TopNController(mass_spec, param['N'], param['isolation_width'],
+        controller = TopNController(param['ionisation_mode'], param['N'], param['isolation_width'],
                                     param['mz_tol'], param['rt_tol'], param['min_ms1_intensity'])
-        controller.run(param['min_rt'], param['max_rt'], progress_bar=param['pbar'])
-        controller.write_mzML(analysis_name, mzml_out)
+        # create an environment to run both the mass spec and controller
+        env = Environment(mass_spec, controller, param['min_rt'], param['max_rt'], progress_bar=param['pbar'])
+        set_log_level_warning()
+        env.run()
+        set_log_level_debug()
+        env.write_mzML(None, mzml_out)
         save_obj(controller, pickle_out)
         return analysis_name
 

@@ -30,19 +30,19 @@ Installation
 Stable version
 
 
-ViMMS requires Python 3+. Unfortunately it is not compatible with Python 2. You can install the stable version of ViMMS using pip:
+ViMMS requires Python 3+. Unfortunately it is not compatible with Python 2. You can install the stable 1.0 version of ViMMS using pip:
 
 ```pip install vimms```
 
-You can download the latest stable release for the paper in review from here: <a href="https://zenodo.org/badge/latestdoi/196360601"><img src="https://zenodo.org/badge/196360601.svg" alt="DOI"></a>
+You can download the latest stable release (1.0) used in our paper from here: <a href="https://zenodo.org/badge/latestdoi/196360601"><img src="https://zenodo.org/badge/196360601.svg" alt="DOI"></a>
 
-To use the latest bleeding-edge ViMMS code in this repository:
+To use the latest bleeding-edge ViMMS code in this repository, follow the steps below. Note that this repository is in active development, so some things may break.
 
 1. Install Python 3. We recommend Python 3.6 or 3.7.
 2. Install pipenv (https://pipenv.readthedocs.io/en/latest/).
 3. Clone this repository.
 4. In this cloned directory, run `$ pipenv install` to create a new virtual environment and install all the packages need to run ViMMS.
-5. Run jupyter notebook. 
+5. Run Jupyter Notebook (`$ jupyter notebook`) or Jupyter Lab (`$ jupyter lab`).
 
 Example Notebooks
 --------

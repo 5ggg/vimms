@@ -32,7 +32,7 @@ def fragmentation_performance_chemicals(controller_directory, min_acceptable_int
     for controller_index in range(n_samples):
         controller = load_obj(file_names[controller_index])
         controllers.append(controller)
-        all_chemicals.extend(controller.mass_spec.chemicals)
+        all_chemicals.extend(controller.environment.mass_spec.chemicals)
     all_rts = [chem.rt for chem in all_chemicals]
     chemicals_found_total = np.unique(all_rts)
     sample_chemical_start_rts = [[] for i in range(n_samples)]
@@ -76,9 +76,9 @@ def fragmentation_performance_aligned(param_dict):
     n_chemicals_aligned = len(aligned_chemicals["mzmed"])
     chemicals_found = 0
 
-    events = np.array([event for event in controller.mass_spec.fragmentation_events if event.ms_level == 2])
+    events = np.array([event for event in controller.environment.mass_spec.fragmentation_events if event.ms_level == 2])
     event_query_rts = np.array([event.query_rt for event in events])
-    event_query_mzs = np.array([controller.mass_spec._get_mz(event.chem, event.query_rt, 0, 0) for event in events])
+    event_query_mzs = np.array([controller.environment.mass_spec._get_mz(event.chem, event.query_rt, 0, 0) for event in events])
 
     chemicals_found = [0 for i in range(n_chemicals_aligned)]
 
@@ -96,7 +96,7 @@ def fragmentation_performance_aligned(param_dict):
 
         for i in idx:
             event = events[i]
-            inten = controller.mass_spec._get_intensity(event.chem, event.query_rt, 0, 0)
+            inten = controller.environment.mass_spec._get_intensity(event.chem, event.query_rt, 0, 0)
             if inten > min_acceptable_intensity:
                 chemicals_found[aligned_index] = 1
                 break
