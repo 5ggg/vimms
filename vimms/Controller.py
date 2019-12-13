@@ -444,8 +444,7 @@ class RoiController(TopNController):
     """
 
     def __init__(self, ionisation_mode, isolation_width, mz_tol, min_ms1_intensity, min_roi_intensity,
-                 min_roi_length,
-                 score_method, N=None, rt_tol=10, score_params=None):
+                 min_roi_length, score_method, N=None, rt_tol=10, score_params=None, min_roi_length_for_fragmentation=1):
         super().__init__(ionisation_mode, N, isolation_width, mz_tol, rt_tol, min_ms1_intensity)
 
         # ROI stuff
@@ -456,6 +455,7 @@ class RoiController(TopNController):
         # Score stuff
         self.score_params = score_params
         self.score_method = score_method
+        self.min_roi_length_for_fragmentation = min_roi_length_for_fragmentation
 
         # Create ROI
         self.live_roi = []
@@ -479,13 +479,14 @@ class RoiController(TopNController):
         if self.last_ms1_scan is not None:
             self.current_roi_mzs = [roi.get_mean_mz() for roi in self.live_roi]
             self.current_roi_intensities = [roi.get_max_intensity() for roi in self.live_roi]
+            self.current_roi_length = np.array([roi.n for roi in self.live_roi])
             rt = self.last_ms1_scan.rt
 
             # loop over points in decreasing score
             scores = self._get_scores(self.score_method, self.score_params)
             idx = np.argsort(scores)[::-1]
             for i in idx:
-                mz = self.current_roi_mzs[i] # TODO: this needs to be updated to take last ROI time
+                mz = self.current_roi_mzs[i]
                 intensity = self.current_roi_intensities[i]
 
                 # stopping criteria is done based on the scores
@@ -562,6 +563,7 @@ class RoiController(TopNController):
             time_filter = (1 - np.array(self.live_roi_fragmented).astype(int))
             time_filter[time_filter==0] = ((self.last_ms1_scan.rt - np.array(self.live_roi_last_rt)[time_filter==0]) > self.rt_tols)
             scores *= time_filter
+            scores *= (self.current_roi_length >= self.min_roi_length_for_fragmentation)
             if len(scores) > self.N:  # number of fragmentation events filter
                 scores[scores.argsort()[:(len(scores) - self.N)]] = 0
         elif score_method == "Regression Top N":
