@@ -235,6 +235,7 @@ namespace FusionLibrary
     {
         public IParameterDescription[] PossibleParameters => new MyParameterDescription[3];
         private MyScanContainer myScanContainer = null;
+        private DateTime startTime = DateTime.Now;
 
         public MyScanControl(MyScanContainer myScanContainer)
         {
@@ -296,8 +297,9 @@ namespace FusionLibrary
                 spectraList.RemoveAt(0);
 
                 // pretend to do a scan for some time
-                double scanDuration = this.myScanContainer.scanDurations[current.ScanNumber];
-                Console.WriteLine("Scan number={0} duration={1}", current.ScanNumber, scanDuration);
+                double scanDuration = this.myScanContainer.scanDurations.ContainsKey(current.ScanNumber) ? 
+                    this.myScanContainer.scanDurations[current.ScanNumber] : 0.25;
+                //Console.WriteLine("Scan number={0} duration={1}", current.ScanNumber, scanDuration);
 
                 // delay for scan duration + half of single processing delay
                 //double spdDelay = cs.SingleProcessingDelay / 2;
@@ -308,7 +310,7 @@ namespace FusionLibrary
 
                 // send the scan and trigger canAcceptNextCustomScan event some time later
                 int milliSecondDelay = ((int)totalDelay) * 1000;
-                IMsScan msScan = new MyMsScan(current, cs.RunningNumber);
+                IMsScan msScan = new MyMsScan(current, cs.RunningNumber, this.startTime);
                 Task.Delay(milliSecondDelay).ContinueWith(t => OnSingleProcessingDelay(msScan));
                 return true;
 
@@ -461,14 +463,16 @@ namespace FusionLibrary
         #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
-        public MyMsScan(SimpleSpectrum scan, long runningNumber)
+        public MyMsScan(SimpleSpectrum scan, long runningNumber, DateTime startTime)
         {
             // obtained from checking the dumps of scan header from the actual instrument
             this.Header["MassAnalyzer"] = "";
             this.Header["IonizationMode"] = "";
             this.Header["ScanRate"] = "";
             this.Header["ScanMode"] = "";
-            this.Header["StartTime"] = (scan.ScanStartTime * 60).ToString();
+
+            double elapsedTime = DateTime.Now.Subtract(startTime).TotalSeconds;
+            this.Header["StartTime"] = elapsedTime.ToString();
             this.Header["Scan"] = scan.ScanNumber.ToString();
             this.Header["TIC"] = scan.TotalIonCurrent.ToString();
             this.Header["BasePeakIntensity"] = "";
