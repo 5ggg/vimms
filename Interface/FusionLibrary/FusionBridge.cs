@@ -235,7 +235,7 @@ namespace FusionLibrary
                 {
                     if (!ScanControl.SetCustomScan(cs))
                     {
-                        WriteLog(String.Format("FAILED to place a custom scan (runningNumber={0}), connection to service broken!!", cs.RunningNumber));
+                        WriteLog(String.Format("FAILED to place a custom scan (runningNumber={0}): connection to service broken!!", cs.RunningNumber));
                         return false;
                     }
                     else
@@ -253,14 +253,14 @@ namespace FusionLibrary
                 }
                 catch (Exception e)
                 {
-                    WriteLog(String.Format("FAILED to place a custom scan (runningNumber={0}) due to {1}!!", cs.RunningNumber, e.Message));
+                    WriteLog(String.Format("FAILED to place a custom scan (runningNumber={0}): {1}", cs.RunningNumber, e.Message));
                     WriteLog(String.Format("Stacktrace: {0}", e.StackTrace));
                     throw;
                 }
             }
             else
             {
-                WriteLog(String.Format("FAILED to place a custom scan (runningNumber={0}), no parameters available!!", runningNumber));
+                WriteLog(String.Format("FAILED to place a custom scan (runningNumber={0}): no parameters available!!", runningNumber));
                 return false;
             }
         }

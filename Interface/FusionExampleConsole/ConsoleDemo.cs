@@ -44,7 +44,7 @@ namespace FusionExampleConsole
 
             // create user custom scan event handler
             double startMz = 524;
-            double endMz = 524.5;
+            double endMz = 525;
             double isolationWidth = 0.7;
             double collisionEnergy = 35;
             double precursorMass = startMz;
