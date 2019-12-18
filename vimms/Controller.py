@@ -328,7 +328,7 @@ class TopNController(Controller):
 class HybridController(TopNController):
     def __init__(self, ionisation_mode, N, scan_param_changepoints,
                  isolation_widths, mz_tols, rt_tols, min_ms1_intensity,
-                 n_purity_scans=None, purity_shift=None, purity_threshold=0):
+                 n_purity_scans=None, purity_shift=None, purity_threshold=0, purity_randomise=True, purity_add_ms1=True):
         super().__init__(ionisation_mode, N, isolation_widths, mz_tols, rt_tols, min_ms1_intensity)
 
         # make sure these are stored as numpy arrays
@@ -345,6 +345,8 @@ class HybridController(TopNController):
         self.n_purity_scans = n_purity_scans
         self.purity_shift = purity_shift
         self.purity_threshold = purity_threshold
+        self.purity_randomise = purity_randomise
+        self.purity_add_ms1 = purity_add_ms1
 
         # make sure the input are all correct
         assert len(self.N) == len(self.scan_param_changepoints) == len(self.isolation_width) == len(
@@ -403,14 +405,20 @@ class HybridController(TopNController):
                 if purity <= self.purity_threshold:
                     purity_shift_amounts = [self.purity_shift * (i - (self.n_purity_scans - 1) / 2) for i in
                                             range(self.n_purity_scans)]
-                    for purity_idx in range(self.n_purity_scans):
+                    if self.purity_randomise:
+                        purity_randomise_idx = np.random.choice(self.n_purity_scans, self.n_purity_scans, replace=False)
+                    else:
+                        purity_randomise_idx = range(self.n_purity_scans)
+                    for purity_idx in purity_randomise_idx:
                         # create a new ms2 scan parameter to be sent to the mass spec
                         dda_scan_params = self._get_dda_scan_param(mz + purity_shift_amounts[purity_idx], intensity,
                                                                    current_isolation_width,
                                                                    current_mz_tol, current_rt_tol, DEFAULT_COLLISION_ENERGY)
                         new_tasks.append(dda_scan_params)
+                        if self.purity_add_ms1 and purity_idx != purity_randomise_idx[-1]:
+                            ms1_scan_params = self.environment.get_default_scan_params()
+                            new_tasks.append(ms1_scan_params)
                         fragmented_count += 1
-                        # TODO: need to work out what we want to do here
                 else:
                     # create a new ms2 scan parameter to be sent to the mass spec
                     dda_scan_params = self._get_dda_scan_param(mz, intensity, current_isolation_width,
