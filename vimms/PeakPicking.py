@@ -43,10 +43,10 @@ def MSmixture_posterior(theta, y, t, N, sigma=None, prior_mu=None, prior_var=Non
     if N == 1:
         mean += (theta[1]**2) * norm.pdf(t, abs(theta[2]), abs(theta[3]))
     var = sum((y-mean)**2) / (len(y))
-    like = sum(np.log(norm.pdf(y, mean, var)))
+    log_like = sum(np.log(norm.pdf(y, mean, var)))
     if neg_like:
-        return -like
-    return like
+        return -log_like
+    return log_like
 
 
 class SMC_MSmixture(object):
@@ -90,8 +90,7 @@ class SMC_MSmixture(object):
         # get posteriors
         weights = [MSmixture_posterior(self.current_particles[i], self.y, self.t, self.n_mixtures, neg_like=False) for i in
                    range(self.n_particles)]
-        print('weights', weights)
-        weights = (sum(weights) - weights)
+        updated_weights = np.exp(np.array(weights) - np.array(weights).max())
         # re weight
-        normalised_weights = weights / sum(weights)
+        normalised_weights = np.exp(updated_weights) / sum(np.exp(updated_weights))
         return normalised_weights
