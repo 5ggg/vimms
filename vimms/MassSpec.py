@@ -2,6 +2,7 @@ import atexit
 import math
 import sys
 import time
+import scipy
 
 import numpy as np
 from events import Events
@@ -208,7 +209,8 @@ class IndependentMassSpectrometer(object):
     ACQUISITION_STREAM_CLOSING = 'AcquisitionStreamClosing'
     STATE_CHANGED = 'StateChanged'
 
-    def __init__(self, ionisation_mode, chemicals, peak_sampler, add_noise=False):
+    def __init__(self, ionisation_mode, chemicals, peak_sampler, add_noise=False,
+                 isolation_transition_window='rectangular', isolation_transition_window_params=None):
         """
         Creates a mass spec object.
         :param ionisation_mode: POSITIVE or NEGATIVE
@@ -254,6 +256,9 @@ class IndependentMassSpectrometer(object):
 
         self.add_noise = add_noise  # whether to add noise to the generated fragment peaks
         self.fragmentation_events = []  # which chemicals produce which peaks
+
+        self.isolation_transition_window = isolation_transition_window
+        self.isolation_transition_window_params = isolation_transition_window_params
 
     ####################################################################################################################
     # Public methods
@@ -553,6 +558,13 @@ class IndependentMassSpectrometer(object):
             # returns ms3 fragments if chemical and scan are both ms3, etc, etc
             intensity = self._get_intensity(chemical, query_rt, which_isotope, which_adduct)
             mz = self._get_mz(chemical, query_rt, which_isotope, which_adduct)
+
+            if self.isolation_transition_window == 'gaussian':
+                parent_mz = self._get_mz(chemical.parent, query_rt, which_isotope, which_adduct)
+                scale_factor = scipy.stats.norm(0, self.isolation_transition_window_params[0]).pdf(parent_mz - sum(isolation_windows[ms_level-2][0])/2)
+                scale_factor /= scipy.stats.norm(0, self.isolation_transition_window_params[0]).pdf(0)
+                print(scale_factor)
+                intensity *= scale_factor
             return [(mz, intensity)]
             # TODO: Potential improve how the isotope spectra are generated
         else:
