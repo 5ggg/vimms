@@ -61,7 +61,8 @@ QCB_SCORE_PARAM_DICT = {'min_ms1_intensity': 0,
                         'matching_rt_tol': 10}
 
 
-def mzml2chems(mzml_file, ps, param_dict=QCB_MZML2CHEMS_DICT, output_dir = True):
+
+def mzml2chems(mzml_file, ps, param_dict=QCB_MZML2CHEMS_DICT, output_dir = True, n_peaks=1):
     good_roi, junk = make_roi(mzml_file, mz_tol=param_dict['mz_tol'], mz_units=param_dict['mz_units'],
                               min_length=param_dict['min_length'], min_intensity=param_dict['min_intensity'],
                               start_rt=param_dict['start_rt'], stop_rt=param_dict['stop_rt'])
@@ -71,7 +72,7 @@ def mzml2chems(mzml_file, ps, param_dict=QCB_MZML2CHEMS_DICT, output_dir = True)
         if np.count_nonzero(np.array(roi.intensity_list) > param_dict['min_ms1_intensity']) > 0:
             keep.append(roi)
     all_roi = keep
-    rtcc = RoiToChemicalCreator(ps, all_roi)
+    rtcc = RoiToChemicalCreator(ps, all_roi, n_peaks)
     dataset = rtcc.chemicals
     if output_dir is True:
         dataset_name = os.path.splitext(mzml_file)[0] + '.p'
@@ -182,10 +183,11 @@ class BaseOptimiser(object):
                    mzmine_command=self.mzmine_command)
         ms2_picked_peaks_file = self.picked_peaks_dir + '\\' + controller_name + '_pp.csv'
 
-        score = controller_score(controller, self.dataset, ms1_picked_peaks_file, ms2_picked_peaks_file,
-                                 score_param_dict['min_ms1_intensity'],
-                                 score_param_dict['matching_mz_tol'],
-                                 score_param_dict['matching_rt_tol'])
+        score = peak_scoring(env.controller, ms1_picked_peaks_file, ms2_picked_peaks_file)
+        # score = controller_score(controller, self.dataset, ms1_picked_peaks_file, ms2_picked_peaks_file,
+        #                          score_param_dict['min_ms1_intensity'],
+        #                          score_param_dict['matching_mz_tol'],
+        #                          score_param_dict['matching_rt_tol'])
 
         return [score] + list(next_flex_param_dict.values())
 
