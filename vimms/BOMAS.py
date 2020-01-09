@@ -17,6 +17,7 @@ from vimms.Roi import make_roi, RoiToChemicalCreator
 import os
 from vimms.MassSpec import IndependentMassSpectrometer
 from vimms.Environment import *
+from vimms.PythonMzmine import peak_scoring
 
 
 MZMINE_COMMAND = 'C:\\Users\\Vinny\\work\\MZmine-2.40.1\\MZmine-2.40.1\\startMZmine_Windows.bat'
