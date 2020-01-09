@@ -2,13 +2,14 @@ import atexit
 import math
 import sys
 import time
-import scipy
 
 import numpy as np
+import scipy
 from events import Events
 from loguru import logger
 
-from vimms.Common import adduct_transformation, DEFAULT_MS1_SCAN_WINDOW, DEFAULT_IAPI_SINGLE_PROCESSING_DELAY
+from vimms.Common import adduct_transformation, DEFAULT_MS1_SCAN_WINDOW, DEFAULT_IAPI_SINGLE_PROCESSING_DELAY, \
+    create_if_not_exist
 
 
 class Peak(object):
@@ -561,7 +562,8 @@ class IndependentMassSpectrometer(object):
 
             if self.isolation_transition_window == 'gaussian':
                 parent_mz = self._get_mz(chemical.parent, query_rt, which_isotope, which_adduct)
-                scale_factor = scipy.stats.norm(0, self.isolation_transition_window_params[0]).pdf(parent_mz - sum(isolation_windows[ms_level-2][0])/2)
+                scale_factor = scipy.stats.norm(0, self.isolation_transition_window_params[0]).pdf(
+                    parent_mz - sum(isolation_windows[ms_level - 2][0]) / 2)
                 scale_factor /= scipy.stats.norm(0, self.isolation_transition_window_params[0]).pdf(0)
                 intensity *= scale_factor
             return [(mz, intensity)]
@@ -624,8 +626,13 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
     via IAPI (https://github.com/thermofisherlsms/iapi)
     """
 
-    def __init__(self, ionisation_mode, ref_dir, filename=None, show_console_logs=True):
+    def __init__(self, ionisation_mode, ref_dir, filename=None, show_console_logs=True,
+                 log_dir='C:\\Xcalibur\\data\\Joe\\logs'):
         super().__init__(ionisation_mode, [], None, add_noise=False)
+
+        # create IAPI log directory if it doesn't exist
+        self.log_dir = log_dir
+        create_if_not_exist(self.log_dir)
 
         # import PythonNet. We will use this to communicate with Thermo IAPI
 
@@ -667,7 +674,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
 
         # noinspection PyUnresolvedReferences
         from FusionLibrary import FusionBridge
-        self.fusion_bridge = FusionBridge(self.filename, self.show_console_logs)
+        self.fusion_bridge = FusionBridge(self.filename, self.log_dir, self.show_console_logs)
 
         logger.debug('Attaching event handlers')
         atexit.register(self.close)  # called when the current process exits
@@ -768,6 +775,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
             self.close()
 
         logger.debug('Successfully sent custom scan %d' % (current_running_number))
+
     def _get_custom_scan_number(self, iapi_scan):
         """
         Extracts the custom scan number from an IAPI scan

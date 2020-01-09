@@ -15,7 +15,7 @@ namespace FusionExampleConsole
             bool showConsoleLogs = true;
 
             // create a new Fusion bridge
-            FusionBridge fusionBridge = new FusionBridge(debugMzML, showConsoleLogs);
+            FusionBridge fusionBridge = new FusionBridge(debugMzML, null, showConsoleLogs);
 
             // set event handler when this main process exits
             AppDomain.CurrentDomain.ProcessExit += (sender, EventArgs) =>
