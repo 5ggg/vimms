@@ -295,7 +295,7 @@ class RoiToChemicalCreator(ChemicalCreator):
     Turns ROI to Chemical objects
     """
 
-    def __init__(self, peak_sampler, all_roi):
+    def __init__(self, peak_sampler, all_roi, n_peaks=1):
         super().__init__(peak_sampler)
         self.rois_data = all_roi
         self.ms_levels = 2
@@ -329,7 +329,7 @@ class RoiToChemicalCreator(ChemicalCreator):
                 if self.peak_sampler is not None:
                     try:
                         # TODO: initialise chemical with only 1 child for the purpose of experiment, we might need to improve this
-                        chem.children = self._get_children(GET_MS2_BY_PEAKS, chem, n_peaks=1)
+                        chem.children = self._get_children(GET_MS2_BY_PEAKS, chem, n_peaks=n_peaks)
                     except KeyError:
                         pass
                 self.chromatograms.append(chrom)
