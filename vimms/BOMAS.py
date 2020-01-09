@@ -175,7 +175,7 @@ class BaseOptimiser(object):
         env = Environment(mass_spec, controller, controller_param_dict['rt_range'][0][0],
                           controller_param_dict['rt_range'][0][1], progress_bar=True)
         env.run()
-        controller_name = 'controller_' + str(idx)
+        controller_name = 'controller_' + "{:05d}".format(idx)
         env.write_mzML(self.ms2_dir, controller_name + '.mzml')
         save_obj(controller, os.path.join(self.ms2_dir, controller_name + '.p'))
 
