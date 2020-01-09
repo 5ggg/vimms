@@ -563,7 +563,6 @@ class IndependentMassSpectrometer(object):
                 parent_mz = self._get_mz(chemical.parent, query_rt, which_isotope, which_adduct)
                 scale_factor = scipy.stats.norm(0, self.isolation_transition_window_params[0]).pdf(parent_mz - sum(isolation_windows[ms_level-2][0])/2)
                 scale_factor /= scipy.stats.norm(0, self.isolation_transition_window_params[0]).pdf(0)
-                print(scale_factor)
                 intensity *= scale_factor
             return [(mz, intensity)]
             # TODO: Potential improve how the isotope spectra are generated
