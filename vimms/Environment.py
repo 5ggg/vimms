@@ -229,7 +229,8 @@ class IAPIEnvironment(Environment):
             # handle the scan immediately by passing it to the controller
             self.scan_channel.append(scan)
             scan = self.scan_channel.pop(0)
-            tasks = self.controller.handle_scan(scan)
+            queue_size = len(self.mass_spec.get_processing_queue())
+            tasks = self.controller.handle_scan(scan, queue_size)
             self.add_tasks(tasks)  # push new tasks to mass spec queue
 
             # update controller internal states AFTER a scan has been generated and handled
