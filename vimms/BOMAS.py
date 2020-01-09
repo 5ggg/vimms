@@ -24,6 +24,8 @@ XML_TEMPLATE_MS1 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\mzmine_batch_ms1
 XML_TEMPLATE_MS2 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\mzmine_batch_ms2.xml'
 QCB_XML_TEMPLATE_MS1 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\QCB_mzmine_batch_ms1.xml'
 QCB_XML_TEMPLATE_MS2 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\QCB_mzmine_batch_ms2.xml'
+QCB2_XML_TEMPLATE_MS1 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\QCB2_mzmine_batch_ms1.xml'
+QCB2_XML_TEMPLATE_MS2 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\QCB2_mzmine_batch_ms2.xml'
 
 
 QCB_MZML2CHEMS_DICT = {'min_ms1_intensity': 1.75E5,
