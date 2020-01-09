@@ -41,7 +41,7 @@ class Controller(object):
     def handle_acquisition_closing(self):
         raise NotImplementedError()
 
-    def handle_scan(self, scan):
+    def handle_scan(self, scan, queue_size):
         logger.info('Time %f Received %s' % (scan.rt, scan))
         self.scans[scan.ms_level].append(scan)
 
@@ -57,7 +57,7 @@ class Controller(object):
                 self.last_ms1_scan = None
 
         # impelemnted by subclass
-        new_tasks = self._process_scan(scan)
+        new_tasks = self._process_scan(scan, queue_size)
         return new_tasks
 
     def update_state_after_scan(self, last_scan):
@@ -69,7 +69,7 @@ class Controller(object):
     def reset(self):
         raise NotImplementedError()
 
-    def _process_scan(self, scan):
+    def _process_scan(self, scan, queue_size):
         raise NotImplementedError()
 
     def _plot_scan(self, scan):
@@ -100,7 +100,7 @@ class IdleController(Controller):
     def handle_acquisition_closing(self):
         logger.info('Acquisition closing')
 
-    def _process_scan(self, scan):
+    def _process_scan(self, scan, queue_size):
         new_tasks = []
         return new_tasks
 
@@ -128,7 +128,7 @@ class SimpleMs1Controller(Controller):
     def handle_acquisition_closing(self):
         logger.info('Acquisition closing')
 
-    def _process_scan(self, scan):
+    def _process_scan(self, scan, queue_size):
         new_tasks = [
             self.environment.get_default_scan_params()
         ]
@@ -171,7 +171,7 @@ class TopNController(Controller):
     def handle_acquisition_closing(self):
         logger.info('Acquisition closing')
 
-    def _process_scan(self, scan):
+    def _process_scan(self, scan, queue_size):
         # if there's a previous ms1 scan to process
         new_tasks = []
         if self.last_ms1_scan is not None:
@@ -354,10 +354,11 @@ class HybridController(TopNController):
         if self.purity_threshold != 0:
             assert all(self.n_purity_scans <= np.array(self.N))
 
-    def _process_scan(self, scan):
+    def _process_scan(self, scan, queue_size):
         # if there's a previous ms1 scan to process
         new_tasks = []
-        if self.last_ms1_scan is not None:
+        if self.last_ms1_scan is not None and queue_size == 0:
+            # check queue size because we want to schedule both ms1 and ms2 in the hybrid controller
 
             mzs = self.last_ms1_scan.mzs
             intensities = self.last_ms1_scan.intensities
@@ -478,7 +479,7 @@ class RoiController(TopNController):
     def handle_acquisition_closing(self):
         logger.info('Acquisition closing')
 
-    def _process_scan(self, scan):
+    def _process_scan(self, scan, queue_size):
         # keep growing ROIs if we encounter a new ms1 scan
         self._update_roi(scan)
 
@@ -602,7 +603,7 @@ class TreeController(Controller):
     def handle_acquisition_closing(self):
         logger.info('Acquisition closing')
 
-    def _process_scan(self, scan):
+    def _process_scan(self, scan, queue_size):
         # if there's a previous ms1 scan to process
         new_tasks = []
         if self.last_ms1_scan is not None:
