@@ -8,6 +8,7 @@ from loguru import logger
 from vimms.Chemicals import UnknownChemical
 from vimms.Common import PROTON_MASS
 from vimms.PlotsForPaper import get_chem_frag_counts, update_matched_status, compute_pref_rec_f1, get_frag_events
+from vimms.MassSpec import ScanParameters
 
 
 def pick_peaks(file_list,
@@ -139,3 +140,65 @@ def mzmine_match(chemical_list_1, chemical_list_2, mz_tol, rt_tol, verbose=False
         if match:
             matches[to_find] = match
     return matches
+
+
+def find_col(df, name):
+    locations = np.array([colname.find(name) for colname in df.columns])
+    return np.array(df[df.columns[np.where(locations != -1)[0]][0]])
+
+
+def get_base_scoring_df(ms1_picked_peaks_file=None, ms2_picked_peaks_file=None):
+    if ms1_picked_peaks_file is not None:
+        ms1_df = pd.read_csv(ms1_picked_peaks_file)
+        # get MS1 picked peak information
+        ms1_scoring_df = pd.DataFrame({'m/z min': find_col(ms1_df, 'Peak m/z min')})
+        ms1_scoring_df['m/z max'] = find_col(ms1_df, 'Peak m/z max')
+        ms1_scoring_df['rt min'] = find_col(ms1_df, 'Peak RT start') * 60
+        ms1_scoring_df['rt max'] = find_col(ms1_df, 'Peak RT end') * 60
+    if ms2_picked_peaks_file is not None:
+        ms2_df = pd.read_csv(ms2_picked_peaks_file)
+        # get MS2 picked peak information
+        ms2_scoring_df = pd.DataFrame({'m/z min': find_col(ms2_df, 'Peak m/z min')})
+        ms2_scoring_df['m/z max'] = find_col(ms2_df, 'Peak m/z max')
+        ms2_scoring_df['rt min'] = find_col(ms2_df, 'Peak RT start') * 60
+        ms2_scoring_df['rt max'] = find_col(ms2_df, 'Peak RT end') * 60
+    # return
+    if ms1_picked_peaks_file is None and ms2_picked_peaks_file is None:
+        return None
+    elif ms1_picked_peaks_file is None:
+        return ms2_scoring_df
+    elif ms2_picked_peaks_file is None:
+        return ms1_scoring_df
+    else:
+        return ms1_scoring_df, ms2_scoring_df
+
+def peak_scoring(controller, ms1_picked_peaks_file, ms2_picked_peaks_file):
+    ms1_scoring_df, ms2_scoring_df = get_base_scoring_df(ms1_picked_peaks_file, ms2_picked_peaks_file)
+    scoring_count = [0 for i in range(len(ms1_scoring_df.index))]
+    scoring_logint = [0 for i in range(len(ms1_scoring_df.index))]
+    # set frag_scans
+    frag_scans = controller.scans[2]  # TODO: Check minimum intensity?
+    for scan in frag_scans:
+        query_mz = scan.scan_params.get(ScanParameters.PRECURSOR_MZ).precursor_mz # TODO: change this to take precusor window
+        # check whether in an MS1 peak - record peaks it is in
+        min_rt_check_ms1 = ms1_scoring_df['rt min'] <= scan.rt
+        max_rt_check_ms1 = scan.rt <= ms1_scoring_df['rt max']
+        min_mz_check_ms1 = ms1_scoring_df['m/z min'] <= query_mz
+        max_mz_check_ms1 = query_mz <= ms1_scoring_df['m/z max']
+        idx_ms1 = np.nonzero(min_rt_check_ms1 & max_rt_check_ms1 & min_mz_check_ms1 & max_mz_check_ms1)[0]
+        # check whether in an MS2 peak
+        min_rt_check_ms2 = ms2_scoring_df['rt min'] <= scan.rt
+        max_rt_check_ms2 = scan.rt <= ms2_scoring_df['rt max']
+        min_mz_check_ms2 = ms2_scoring_df['m/z min'] <= query_mz
+        max_mz_check_ms2 = query_mz <= ms2_scoring_df['m/z max']
+        idx_ms2 = np.nonzero(min_rt_check_ms2 & max_rt_check_ms2 & min_mz_check_ms2 & max_mz_check_ms2)[0]
+        # record scores
+        if len(idx_ms2) > 0 and len(idx_ms1) > 0:
+            for i in range(len(idx_ms1)):
+                scoring_count[idx_ms1[i]] = 1
+#                 scan_intensity #  this is difficult to get - will need to match to peak
+#                 scoring_logint[idx_ms1[i]] = max(scoring_logint[idx_ms1[i]], scan_intensity)
+    print(sum(scoring_count))
+    score_count = sum(scoring_count) / len(scoring_count)
+    #score_logit = sum(scoring_logit)
+    return score_count #, score_logit
