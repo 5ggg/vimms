@@ -281,11 +281,21 @@ namespace FusionLibrary
             // select whether to generate ms1 or msn spectra from the read mzML data
             List<SimpleSpectrum> spectraList = null;
             if (cs.Values["ScanType"] == "Full")
-            {
+            {   
+                // if empty, copy ms1 spectra from the original list
+                if (this.myScanContainer.ms1Spectra.Count == 0)
+                {
+                    this.myScanContainer.ms1Spectra = new List<SimpleSpectrum>(this.myScanContainer.originalMs1Spectra);
+                }
                 spectraList = this.myScanContainer.ms1Spectra;
             }
             else if (cs.Values["ScanType"] == "MSn")
             {
+                // if empty, copy msn spectra from the original list
+                if (this.myScanContainer.msnSpectra.Count == 0)
+                {
+                    this.myScanContainer.msnSpectra = new List<SimpleSpectrum>(this.myScanContainer.originalMsnSpectra);
+                }
                 spectraList = this.myScanContainer.msnSpectra;
             }
 
@@ -371,6 +381,8 @@ namespace FusionLibrary
     {
         public List<SimpleSpectrum> ms1Spectra = new List<SimpleSpectrum>();
         public List<SimpleSpectrum> msnSpectra = new List<SimpleSpectrum>();
+        public List<SimpleSpectrum> originalMs1Spectra = new List<SimpleSpectrum>();
+        public List<SimpleSpectrum> originalMsnSpectra = new List<SimpleSpectrum>();
         public Dictionary<int, double> scanDurations = new Dictionary<int, double>();
         private IMsScan lastScan = null;
 
@@ -383,11 +395,11 @@ namespace FusionLibrary
                 SimpleSpectrum current = allSpectra[i];
                 if (current.MsLevel == 1)
                 {
-                    ms1Spectra.Add(current);
+                    originalMs1Spectra.Add(current);
                 }
                 else
                 {
-                    msnSpectra.Add(current);
+                    originalMsnSpectra.Add(current);
                 }
 
                 // compute the scan duration of the previous scan
