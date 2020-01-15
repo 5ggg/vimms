@@ -6,6 +6,8 @@
 
   <ItemGroup>
     <PackageReference Include="PSI_Interface" Version="2.2.1" />
+    <PackageReference Include="Microsoft.Win32.Registry" Version="4.7.0" />
+    <PackageReference Include="System.ComponentModel.Composition" Version="4.7.0" />
   </ItemGroup>
 
   <ItemGroup>
