@@ -50,7 +50,7 @@ namespace FusionLibrary
             {
                 //// Use the Factory creation method to create a Fusion Access Container
                 WriteLog("FusionBridge constructor called");
-                fusionContainer = Factory<IFusionInstrumentAccessContainer>.Create();
+                fusionContainer = getIFusionInstrumentAccessContainer();
             }
 
 
@@ -87,6 +87,11 @@ namespace FusionLibrary
                 state.SystemState);
             WriteLog(msg);
 
+        }
+
+        public static IFusionInstrumentAccessContainer getIFusionInstrumentAccessContainer()
+        {
+            return Factory<IFusionInstrumentAccessContainer>.Create();
         }
 
         public void SetEventHandlers(UserScanArriveDelegate scanArriveDelegate,
