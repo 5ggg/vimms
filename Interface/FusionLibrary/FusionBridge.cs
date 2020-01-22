@@ -30,11 +30,13 @@ namespace FusionLibrary
         private UserScanArriveDelegate scanHandler;
         private UserStateChangedDelegate stateHandler;
         private UserCreateCustomScanDelegate customScanHandler;
+        private string LogDir { get; set; }
         private bool ShowConsoleLogs { get; set; }
 
-        public FusionBridge(string debugMzML, bool showConsoleLogs)
+        public FusionBridge(string debugMzML, string logDir, bool showConsoleLogs)
         {
             Logs = new List<string>();
+            LogDir = logDir;
             ShowConsoleLogs = showConsoleLogs;
 
             IFusionInstrumentAccessContainer fusionContainer = null;
@@ -48,7 +50,7 @@ namespace FusionLibrary
             {
                 //// Use the Factory creation method to create a Fusion Access Container
                 WriteLog("FusionBridge constructor called");
-                fusionContainer = Factory<IFusionInstrumentAccessContainer>.Create();
+                fusionContainer = getIFusionInstrumentAccessContainer();
             }
 
 
@@ -85,6 +87,11 @@ namespace FusionLibrary
                 state.SystemState);
             WriteLog(msg);
 
+        }
+
+        public static IFusionInstrumentAccessContainer getIFusionInstrumentAccessContainer()
+        {
+            return Factory<IFusionInstrumentAccessContainer>.Create();
         }
 
         public void SetEventHandlers(UserScanArriveDelegate scanArriveDelegate,
@@ -284,8 +291,12 @@ namespace FusionLibrary
 
                 WriteLog("Goodbye Cruel World");
 
-                // write log files to Desktop
-                string docPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                string docPath = this.LogDir;
+                if (docPath == null)
+                {
+                    // if not specified, use the desktop to store the log files
+                    docPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                }
                 string fileName = "FusionBridge_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
                 using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, fileName)))
                 {

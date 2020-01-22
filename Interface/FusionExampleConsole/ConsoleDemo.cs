@@ -9,13 +9,17 @@ namespace FusionExampleConsole
         private static void Main(string[] args)
         {
             // set to null to connect to the real machine
-            string debugMzML = "C:\\Users\\joewa\\University of Glasgow\\Vinny Davies - CLDS Metabolomics Project\\" +
-                "Data\\multibeers_urine_data\\beers\\fragmentation\\mzML\\Beer_multibeers_1_T10_POS.mzML";
+            //string debugMzML = "C:\\Users\\joewa\\University of Glasgow\\Vinny Davies - CLDS Metabolomics Project\\" +
+            //    "Data\\multibeers_urine_data\\beers\\fragmentation\\mzML\\Beer_multibeers_1_T10_POS.mzML";
+
+            string debugMzML = null;
 
             bool showConsoleLogs = true;
 
+            string logDir = "C:\\Xcalibur\\data\\Joe\\logs";
+
             // create a new Fusion bridge
-            FusionBridge fusionBridge = new FusionBridge(debugMzML, showConsoleLogs);
+            FusionBridge fusionBridge = new FusionBridge(debugMzML, logDir, showConsoleLogs);
 
             // set event handler when this main process exits
             AppDomain.CurrentDomain.ProcessExit += (sender, EventArgs) =>
@@ -44,7 +48,7 @@ namespace FusionExampleConsole
 
             // create user custom scan event handler
             double startMz = 524;
-            double endMz = 525;
+            double endMz = 526;
             double isolationWidth = 0.7;
             double collisionEnergy = 35;
             double precursorMass = startMz;
