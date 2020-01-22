@@ -106,7 +106,7 @@ def controller_score(controller, dataset, ms1_picked_peaks_file, ms2_picked_peak
     # calculate score
     tp, fp, fn, prec, rec, f1 = mzmine_score(controller, dataset, ms1_chems, ms2_chems, min_ms1_intensity,
                                              matching_mz_tol, matching_rt_tol)
-    return f1
+    return prec, rec, f1
 
 
 def mzmine_find_chem(to_find, min_rts, max_rts, min_mzs, max_mzs, chem_list):
@@ -178,33 +178,54 @@ def get_base_scoring_df(ms1_picked_peaks_file=None, ms2_picked_peaks_file=None):
     else:
         return ms1_scoring_df, ms2_scoring_df
 
-def peak_scoring(controller, ms1_picked_peaks_file, ms2_picked_peaks_file):
+
+def get_max_intensity(controller, dataset, rt, ms1_isolation_window):
+    mz_int_pairs = []
+    for chem in dataset:
+        new_pair = controller.environment.mass_spec._get_all_mz_peaks(chem, rt, 1, ms1_isolation_window)
+        if new_pair is not None:
+            mz_int_pairs.append(new_pair[0])
+    if len(mz_int_pairs) == 0:
+        return 0
+    max_int = max([i[1] for i in mz_int_pairs])
+    return max_int
+
+
+def peak_scoring(controller, ms1_picked_peaks_file, ms2_picked_peaks_file, dataset, min_ms1_intensity, score_param_dict):
     ms1_scoring_df, ms2_scoring_df = get_base_scoring_df(ms1_picked_peaks_file, ms2_picked_peaks_file)
     scoring_count = [0 for i in range(len(ms1_scoring_df.index))]
     scoring_logint = [0 for i in range(len(ms1_scoring_df.index))]
+    tp, fp, fn = [0, 0, 0]
     # set frag_scans
-    frag_scans = controller.scans[2]  # TODO: Check minimum intensity?
+    frag_scans = controller.scans[2]
     for scan in frag_scans:
-        query_mz = scan.scan_params.get(ScanParameters.PRECURSOR_MZ).precursor_mz # TODO: change this to take precusor window
-        # check whether in an MS1 peak - record peaks it is in
-        min_rt_check_ms1 = ms1_scoring_df['rt min'] <= scan.rt
-        max_rt_check_ms1 = scan.rt <= ms1_scoring_df['rt max']
-        min_mz_check_ms1 = ms1_scoring_df['m/z min'] <= query_mz
-        max_mz_check_ms1 = query_mz <= ms1_scoring_df['m/z max']
-        idx_ms1 = np.nonzero(min_rt_check_ms1 & max_rt_check_ms1 & min_mz_check_ms1 & max_mz_check_ms1)[0]
-        # check whether in an MS2 peak
-        min_rt_check_ms2 = ms2_scoring_df['rt min'] <= scan.rt
-        max_rt_check_ms2 = scan.rt <= ms2_scoring_df['rt max']
-        min_mz_check_ms2 = ms2_scoring_df['m/z min'] <= query_mz
-        max_mz_check_ms2 = query_mz <= ms2_scoring_df['m/z max']
-        idx_ms2 = np.nonzero(min_rt_check_ms2 & max_rt_check_ms2 & min_mz_check_ms2 & max_mz_check_ms2)[0]
-        # record scores
-        if len(idx_ms2) > 0 and len(idx_ms1) > 0:
-            for i in range(len(idx_ms1)):
-                scoring_count[idx_ms1[i]] = 1
-#                 scan_intensity #  this is difficult to get - will need to match to peak
-#                 scoring_logint[idx_ms1[i]] = max(scoring_logint[idx_ms1[i]], scan_intensity)
-    print(sum(scoring_count))
+        query_mz_window = scan.scan_params.compute_isolation_windows()[0][0]
+        max_intensity = get_max_intensity(controller, dataset, scan.rt, scan.scan_params.compute_isolation_windows())
+        if max_intensity > min_ms1_intensity:
+            # check whether in an MS1 peak - record peaks it is in
+            min_rt_check_ms1 = ms1_scoring_df['rt min'] <= scan.rt
+            max_rt_check_ms1 = scan.rt <= ms1_scoring_df['rt max']
+            ms1_mz_check1 = (ms1_scoring_df['m/z min'] >= query_mz_window[0]) & (query_mz_window[1] >=ms1_scoring_df['m/z min'])
+            ms1_mz_check2 = (ms1_scoring_df['m/z max'] >= query_mz_window[0]) & (query_mz_window[1] >= ms1_scoring_df['m/z max'])
+            ms1_mz_check3 = (ms1_scoring_df['m/z min'] <= query_mz_window[0]) & (ms1_scoring_df['m/z max'] >= query_mz_window[1])
+            ms1_mz_check = ms1_mz_check1 | ms1_mz_check2 | ms1_mz_check3
+            idx_ms1 = np.nonzero(min_rt_check_ms1 & max_rt_check_ms1 & ms1_mz_check)[0]
+            # check whether in an MS2 peak
+            min_rt_check_ms2 = ms2_scoring_df['rt min'] <= scan.rt
+            max_rt_check_ms2 = scan.rt <= ms2_scoring_df['rt max']
+            ms2_mz_check1 = (ms2_scoring_df['m/z min'] >= query_mz_window[0]) & (query_mz_window[1] >= ms2_scoring_df['m/z min'])
+            ms2_mz_check2 = (ms2_scoring_df['m/z max'] >= query_mz_window[0]) & (query_mz_window[1] >= ms2_scoring_df['m/z max'])
+            ms2_mz_check3 = (ms2_scoring_df['m/z min'] <= query_mz_window[0]) & (ms2_scoring_df['m/z max'] >= query_mz_window[1])
+            ms2_mz_check = ms2_mz_check1 | ms2_mz_check2 | ms2_mz_check3
+            idx_ms2 = np.nonzero(min_rt_check_ms2 & max_rt_check_ms2 & ms2_mz_check)[0]
+            # record scores
+            if len(idx_ms2) > 0 and len(idx_ms1) > 0:
+                for i in range(len(idx_ms1)):
+                    scoring_count[idx_ms1[i]] = 1
+                    scoring_logint[idx_ms1[i]] = max(scoring_logint[idx_ms1[i]], np.log(max_intensity))
     score_count = sum(scoring_count) / len(scoring_count)
-    #score_logit = sum(scoring_logit)
-    return score_count #, score_logit
+    score_logint = sum(scoring_logint)
+    prec, rec, f1 = controller_score(controller, dataset, ms1_picked_peaks_file, ms2_picked_peaks_file, min_ms1_intensity,
+                     score_param_dict['matching_mz_tol'], score_param_dict['matching_rt_tol'])
+    return score_count, score_logint, prec, rec, f1
+
