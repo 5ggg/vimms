@@ -8,13 +8,13 @@ from loguru import logger
 from vimms.Chemicals import UnknownChemical
 from vimms.Common import PROTON_MASS
 from vimms.PlotsForPaper import get_chem_frag_counts, update_matched_status, compute_pref_rec_f1, get_frag_events
-from vimms.MassSpec import ScanParameters
 
 
 def pick_peaks(file_list,
                xml_template='batch_files/PretermPilot2Reduced.xml',
                output_dir='/Users/simon/git/pymzmine/output',
-               mzmine_command='/Users/simon/MZmine-2.40.1/startMZmine_MacOSX.command'):
+               mzmine_command='/Users/simon/MZmine-2.40.1/startMZmine_MacOSX.command',
+               add_name=None):
     et = xml.etree.ElementTree.parse(xml_template)
     # Loop over files in the list (just the firts three for now)
     for filename in file_list:
@@ -34,10 +34,16 @@ def pick_peaks(file_list,
                         tag = g.tag
                         text = g.text
                         if tag == 'current_file' or tag == 'last_file':
-                            csv_name = os.path.join(output_dir, filename.split(os.sep)[-1].split('.')[0] + '_pp.csv')
+                            if add_name is None:
+                                csv_name = os.path.join(output_dir, filename.split(os.sep)[-1].split('.')[0] + '_pp.csv')
+                            else:
+                                csv_name = os.path.join(output_dir, filename.split(os.sep)[-1].split('.')[0] + '_' + add_name + '_pp.csv')
                             g.text = csv_name
         # write the xml file for this input file
-        new_xml_name = os.path.join(output_dir, filename.split(os.sep)[-1].split('.')[0] + '.xml')
+        if add_name is None:
+            new_xml_name = os.path.join(output_dir, filename.split(os.sep)[-1].split('.')[0] + '.xml')
+        else:
+            new_xml_name = os.path.join(output_dir, filename.split(os.sep)[-1].split('.')[0] + '_' + add_name + '.xml')
         et.write(new_xml_name)
         # Run mzmine
         logger.info("Running mzMine for {}".format(filename.split(os.sep)[-1]))
