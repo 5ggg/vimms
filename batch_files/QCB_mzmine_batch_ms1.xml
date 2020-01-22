@@ -10,12 +10,12 @@
         <parameter name="Scans">
             <retention_time>
                 <min>0.5</min>
-                <max>10.0</max>
+                <max>30.0</max>
             </retention_time>
             <scan_definition/>
         </parameter>
         <parameter name="m/z">
-            <min>85.0</min>
+            <min>50.0</min>
             <max>1060.0</max>
         </parameter>
         <parameter name="Suffix">filtered</parameter>
@@ -30,36 +30,6 @@
         <parameter name="Mass detector" selected="Centroid">
             <module name="Centroid">
                 <parameter name="Noise level">10000.0</parameter>
-            </module>
-            <module name="Exact mass">
-                <parameter name="Noise level"/>
-            </module>
-            <module name="Local maxima">
-                <parameter name="Noise level"/>
-            </module>
-            <module name="Recursive threshold">
-                <parameter name="Noise level"/>
-                <parameter name="Min m/z peak width"/>
-                <parameter name="Max m/z peak width"/>
-            </module>
-            <module name="Wavelet transform">
-                <parameter name="Noise level"/>
-                <parameter name="Scale level"/>
-                <parameter name="Wavelet window size (%)"/>
-            </module>
-        </parameter>
-        <parameter name="Mass list name">masses</parameter>
-        <parameter name="Output netCDF filename (optional)" selected="false"/>
-    </batchstep>
-    <batchstep method="net.sf.mzmine.modules.rawdatamethods.peakpicking.massdetection.MassDetectionModule">
-        <parameter name="Raw data files" type="BATCH_LAST_FILES"/>
-        <parameter name="Scans">
-            <ms_level>2</ms_level>
-            <scan_definition/>
-        </parameter>
-        <parameter name="Mass detector" selected="Centroid">
-            <module name="Centroid">
-                <parameter name="Noise level">0.0</parameter>
             </module>
             <module name="Exact mass">
                 <parameter name="Noise level"/>
@@ -198,6 +168,13 @@
             <item>Export row ID</item>
             <item>Export row m/z</item>
             <item>Export row retention time</item>
+        </parameter>
+		<parameter name="Export data file elements">
+            <item>Peak m/z</item>
+            <item>Peak RT start</item>
+            <item>Peak RT end</item>
+			<item>Peak m/z min</item>
+			<item>Peak m/z max</item>
         </parameter>
         <parameter name="Export quantitation results and other information">false</parameter>
         <parameter name="Identification separator">;</parameter>
