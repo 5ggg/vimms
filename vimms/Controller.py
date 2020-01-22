@@ -453,13 +453,20 @@ class RoiController(TopNController):
     """
 
     def __init__(self, ionisation_mode, isolation_width, mz_tol, min_ms1_intensity, min_roi_intensity,
-                 min_roi_length, score_method, N=None, rt_tol=10, score_params=None, min_roi_length_for_fragmentation=1):
+                 min_roi_length, score_method, N=None, rt_tol=10, score_params=None, min_roi_length_for_fragmentation=1,
+                 roi_picking_model=None, dsda_scoring_df=None):
         super().__init__(ionisation_mode, N, isolation_width, mz_tol, rt_tol, min_ms1_intensity)
 
         # ROI stuff
         self.min_roi_intensity = min_roi_intensity
         self.mz_units = 'ppm'
         self.min_roi_length = min_roi_length
+
+        # peak picking stuff
+        self.roi_picking_model = roi_picking_model
+
+        # Dsda stuff
+        self.dsda_scoring_df = dsda_scoring_df
 
         # Score stuff
         self.score_params = score_params
@@ -492,7 +499,7 @@ class RoiController(TopNController):
             rt = self.last_ms1_scan.rt
 
             # loop over points in decreasing score
-            scores = self._get_scores(self.score_method, self.score_params)
+            scores = self._get_scores()
             idx = np.argsort(scores)[::-1]
             for i in idx:
                 mz = self.current_roi_mzs[i]
@@ -564,24 +571,46 @@ class RoiController(TopNController):
                 del self.live_roi[pos]
                 del self.live_roi_fragmented[pos]
                 del self.live_roi_last_rt[pos]
+        self.roi_scores = self._get_roi_scores()
+        self.dsda_scores = self._get_dsda_scores()
 
-    def _get_scores(self, score_method, params):
-        if score_method == "Top N":
-            scores = np.log(self.current_roi_intensities)  # log intensities
-            scores *= (np.log(self.current_roi_intensities) > np.log(self.min_ms1_intensity))  # intensity filter
-            time_filter = (1 - np.array(self.live_roi_fragmented).astype(int))
-            time_filter[time_filter==0] = ((self.last_ms1_scan.rt - np.array(self.live_roi_last_rt)[time_filter==0]) > self.rt_tols)
-            scores *= time_filter
-            scores *= (self.current_roi_length >= self.min_roi_length_for_fragmentation)
+    def _get_scores(self):
+        if self.score_method == "Top N":
+            scores = self._get_top_n_score()
             if len(scores) > self.N:  # number of fragmentation events filter
                 scores[scores.argsort()[:(len(scores) - self.N)]] = 0
-        elif score_method == "Regression Top N":
-            # uses regresion methods instead of indicator functions
-            scores = np.log(self.current_roi_intensities)  # log intensities
-            # TODO: some other methods here
-            # thinking of stores models in a dictionary maybe
-            # then can just select the right one - potentially allowing us to just fit one once and save
+        elif self.score_method == "Peak Picking":
+            scores = self._get_top_n_score()
+            scores *= self.roi_scores
+            if len(scores) > self.N:  # number of fragmentation events filter
+                scores[scores.argsort()[:(len(scores) - self.N)]] = 0
+        elif self.score_method == 'DsDA':
+            scores = self._get_top_n_score()
+            scores *= self.dsda_scores
+            if len(scores) > self.N:  # number of fragmentation events filter
+                scores[scores.argsort()[:(len(scores) - self.N)]] = 0
         return scores
+
+    def _get_top_n_score(self):
+        scores = np.log(self.current_roi_intensities)  # log intensities
+        scores *= (np.log(self.current_roi_intensities) > np.log(self.min_ms1_intensity))  # intensity filter
+        time_filter = (1 - np.array(self.live_roi_fragmented).astype(int))
+        time_filter[time_filter == 0] = (
+                    (self.last_ms1_scan.rt - np.array(self.live_roi_last_rt)[time_filter == 0]) > self.rt_tols)
+        scores *= time_filter
+        scores *= (self.current_roi_length >= self.min_roi_length_for_fragmentation)
+        return scores
+
+    def _get_roi_scores(self):
+        roi_scores = [1 for i in self.live_roi]  # TODO: implement ROi scores
+        # roi_scores = self.roi_picking_model(self.live_rois)
+        # takes self.roi_picking_model which is pre-trained and has a function called _predict which returns
+        # probability of peak
+        return roi_scores
+
+    def _get_dsda_scores(self):
+        dsda_scores = [1 for i in self.live_roi]  # TODO: implement DSDA peak scores
+        return dsda_scores
 
 
 ########################################################################################################################
