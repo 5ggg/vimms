@@ -37,11 +37,20 @@ POS_TRANSFORMATIONS['2M+NH4'] = lambda mz: (mz * 2) + 18.033823
 # list and the mean mz which is required.
 class Roi(object):
     def __init__(self, mz, rt, intensity):
-        self.mz_list = [mz]
-        self.rt_list = [rt]
-        self.intensity_list = [intensity]
-        self.n = 1
-        self.mz_sum = mz
+        if type(mz) == list:
+            self.mz_list = mz
+        else:
+            self.mz_list = [mz]
+        if type(rt) == list:
+            self.rt_list = rt
+        else:
+            self.rt_list = [rt]
+        if type(intensity) == list:
+            self.intensity_list = intensity
+        else:
+            self.intensity_list = [intensity]
+        self.n = len(self.mz_list)
+        self.mz_sum = sum(self.mz_list)
 
     def get_mean_mz(self):
         return self.mz_sum / self.n
