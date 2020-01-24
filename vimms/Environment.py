@@ -196,8 +196,6 @@ class IAPIEnvironment(Environment):
 
     def __init__(self, mass_spec, controller, max_time, progress_bar=True, out_dir=None, out_file=None):
         super().__init__(mass_spec, controller, 0, max_time, progress_bar, out_dir, out_file)
-        self.start_time = None
-        self.stop_time = None
         self.last_time = None
         self.pbar = tqdm(total=max_time, initial=0) if self.progress_bar else None
 
@@ -210,9 +208,7 @@ class IAPIEnvironment(Environment):
         self.mass_spec.reset()
         self.controller.reset()
         self._set_initial_values()
-        self.start_time = time.time()
-        self.last_time = self.start_time
-        self.stop_time = self.start_time + self.max_time
+        self.last_time = 0
 
         # register event handlers from the controller
         self.mass_spec.register_event(IndependentMassSpectrometer.MS_SCAN_ARRIVED, self.add_scan)
@@ -227,8 +223,8 @@ class IAPIEnvironment(Environment):
         self.mass_spec.run()
 
     def add_scan(self, scan):
-        # stop event handling if stop_time has been reached
-        if time.time() > self.stop_time:
+        # stop event handling if max_time has been reached
+        if self.mass_spec.time > self.max_time:
             self.mass_spec.close()
             self.close_progress_bar(self.pbar)
             self.write_mzML(self.out_dir, self.out_file)
@@ -244,13 +240,12 @@ class IAPIEnvironment(Environment):
 
     def _update_progress_bar(self, pbar, scan):
         if pbar is not None:
-            current_time = time.time()
+            current_time = scan.rt
             elapsed = current_time - self.last_time
-            now = current_time - self.start_time
             self.last_time = current_time
 
             # FIXME: mabye not the best thing to do
-            self.mass_spec.time = now
+            self.mass_spec.time = current_time
             N, DEW = self._get_N_DEW(self.mass_spec.time)
             if N is not None and DEW is not None:
                 msg = '(%.3fs) ms_level=%d N=%d DEW=%d' % (self.mass_spec.time, scan.ms_level, N, DEW)
