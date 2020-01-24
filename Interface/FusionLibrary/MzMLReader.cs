@@ -483,7 +483,7 @@ namespace FusionLibrary
             this.Header["ScanRate"] = "";
             this.Header["ScanMode"] = "";
 
-            double elapsedTime = DateTime.Now.Subtract(startTime).TotalSeconds;
+            double elapsedTime = DateTime.Now.Subtract(startTime).TotalMinutes;
             this.Header["StartTime"] = elapsedTime.ToString();
             this.Header["Scan"] = scan.ScanNumber.ToString();
             this.Header["TIC"] = scan.TotalIonCurrent.ToString();

@@ -74,9 +74,10 @@ class MzmlWriter(object):
         out.data_processing_list({'id': 'VMS'})
 
     def sort_filter(self, all_scans):
-        all_scans = sorted(all_scans, key=lambda x: x.scan_id)
+        # all_scans = sorted(all_scans, key=lambda x: x.scan_id)
         # all_scans = [x for x in all_scans if x.num_peaks > 0]
 
+        # FIXME: why do we need to do this???!!
         # add a single peak to empty scans
         empty = [x for x in all_scans if x.num_peaks == 0]
         for scan in empty:

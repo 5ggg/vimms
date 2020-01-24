@@ -132,10 +132,11 @@ namespace FusionLibrary
             }
             else
             {
-                string accessId = null;
-                scan.Trailer.TryGetValue("Access id:", out accessId);
+                //string accessId = null;
+                //scan.Trailer.TryGetValue("Access id:", out accessId);
+                string runningNumber = scan.Header["MasterScan"];
                 WriteLog(string.Format("Received a new scan (scan number={0}, runningNumber={1}) containing {2} peaks",
-                    scan.Header["Scan"], accessId, scan.CentroidCount));
+                    scan.Header["Scan"], runningNumber, scan.CentroidCount));
 
                 // dump header
                 foreach (KeyValuePair<string, string> kvp in scan.Header)

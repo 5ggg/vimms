@@ -152,6 +152,11 @@ class ScanParameters(object):
     def __repr__(self):
         return 'ScanParameters %s' % (self.params)
 
+    def __eq__(self, other):
+        if not isinstance(other, ScanParameters):
+            return NotImplemented
+        return self.params == other.params
+
 
 class FragmentationEvent(object):
     """
@@ -694,16 +699,19 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         """
         # the custom scan id are stored in the trailer, so we try to retrieve that and set it as the scan id
         # if it isn't set, then the default value is 0, in which case we use the scan number in the header as scan id
-        scan_id = int(self._get_custom_scan_number(iapi_scan))
+        scan_id = self._get_custom_scan_number(iapi_scan)
         if scan_id == 0:
             scan_id = int(iapi_scan.Header['Scan'])
 
-        scan_time = float(iapi_scan.Header['StartTime'])
+        scan_time = float(iapi_scan.Header['StartTime']) * 60.0
         scan_mzs = np.array([c.Mz for c in iapi_scan.Centroids])
         scan_intensities = np.array([c.Intensity for c in iapi_scan.Centroids])
         ms_level = int(iapi_scan.Header['MSOrder'])
 
-        scan_params = self.scan_number_to_params[scan_id]
+        try:
+            scan_params = self.scan_number_to_params[scan_id]
+        except KeyError:
+            scan_params = None
         parent = None  # TODO: how to set this???
         scan_duration = None  # FIXME: the raw data shows the scan duration, but how to get it from IAPI??
 

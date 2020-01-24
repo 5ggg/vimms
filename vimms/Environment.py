@@ -20,8 +20,6 @@ class Environment(object):
         :param max_time: end time
         :param progress_bar: True if a progress bar is to be shown
         """
-        self.scan_channel = []
-        self.task_channel = []
         self.mass_spec = mass_spec
         self.controller = controller
         self.min_time = min_time
@@ -37,6 +35,7 @@ class Environment(object):
         self.default_scan_params.set(ScanParameters.LAST_MASS, DEFAULT_MS1_SCAN_WINDOW[1])
         self.out_dir = out_dir
         self.out_file = out_file
+        self.pending_tasks = []
 
     def run(self):
         """
@@ -108,21 +107,29 @@ class Environment(object):
         :param scan: A newly generated scan
         :return: None
         """
-        self.scan_channel.append(scan)
-        scan = self.scan_channel.pop(0)
-        queue_size = len(self.mass_spec.get_processing_queue())
-        tasks = self.controller.handle_scan(scan, queue_size)
+        # check the status of the last block of pending tasks we sent to determine if their corresponding scans
+        # have actually been performed by the mass spec
+        completed_task = scan.scan_params
+        if completed_task is not None: # should not be none for custom scans that we sent
+            self.pending_tasks = [t for t in self.pending_tasks if t != completed_task]
+
+        # handle the scan immediately by passing it to the controller,
+        # and get new set of tasks from the controller
+        outgoing_queue_size = len(self.mass_spec.get_processing_queue())
+        pending_tasks_size = len(self.pending_tasks)
+        tasks = self.controller.handle_scan(scan, outgoing_queue_size, pending_tasks_size)
+        self.pending_tasks.extend(tasks) # track pending tasks here
+
+        # immediately push new tasks to mass spec queue
         self.add_tasks(tasks)
 
-    def add_tasks(self, scan_params):
+    def add_tasks(self, outgoing_scan_params):
         """
         Stores new tasks from the controller. In this case, immediately we pass the new tasks to the mass spec.
-        :param scan_params: new tasks
+        :param outgoing_scan_params: new tasks to send
         :return: None
         """
-        self.task_channel.extend(scan_params)
-        while len(self.task_channel) > 0:
-            new_task = self.task_channel.pop(0)
+        for new_task in outgoing_scan_params:
             self.mass_spec.add_to_processing_queue(new_task)
 
     def write_mzML(self, out_dir, out_file):
@@ -226,12 +233,8 @@ class IAPIEnvironment(Environment):
             self.close_progress_bar(self.pbar)
             self.write_mzML(self.out_dir, self.out_file)
         else:
-            # handle the scan immediately by passing it to the controller
-            self.scan_channel.append(scan)
-            scan = self.scan_channel.pop(0)
-            queue_size = len(self.mass_spec.get_processing_queue())
-            tasks = self.controller.handle_scan(scan, queue_size)
-            self.add_tasks(tasks)  # push new tasks to mass spec queue
+            # call super to handle this scan in the controller and push new tasks to the mass spec
+            super().add_scan(scan)
 
             # update controller internal states AFTER a scan has been generated and handled
             self.controller.update_state_after_scan(scan)
