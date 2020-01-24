@@ -57,6 +57,9 @@ class Controller(object):
         else:
             self.last_ms1_scan = None
 
+        logger.debug('outgoing_queue_size = %d, pending_tasks_size = %d' % (outgoing_queue_size, pending_tasks_size))
+        logger.debug('last_ms1_scan = %s' % self.last_ms1_scan)
+
         # impelemnted by subclass
         new_tasks = self._process_scan(scan)
         return new_tasks
@@ -259,8 +262,9 @@ class TopNController(Controller):
         :param scan: the newly generated scan
         :return: None
         """
-        precursor = scan.scan_params.get(ScanParameters.PRECURSOR_MZ)
-        if scan.ms_level >= 2 and precursor is not None:
+        if scan.ms_level >= 2: # if ms-level is 2, it's a custom scan and we should always know its scan parameters
+            assert scan.scan_params is not None
+            precursor = scan.scan_params.get(ScanParameters.PRECURSOR_MZ)
             isolation_windows = scan.scan_params.compute_isolation_windows()
             iso_min = isolation_windows[0][0][0] # half-width isolation window, in Da
             iso_max = isolation_windows[0][0][1] # half-width isolation window, in Da
@@ -281,10 +285,12 @@ class TopNController(Controller):
         if scan.scan_duration is not None:
             current_time = scan.rt + scan.scan_duration
         else:
-            current_time = time.time() - self.environment.mass_spec.start_time
+            current_time = scan.rt
 
-        precursor = scan.scan_params.get(ScanParameters.PRECURSOR_MZ)
-        if scan.ms_level >= 2 and precursor is not None:
+        if scan.ms_level >= 2: # if ms-level is 2, it's a custom scan and we should always know its scan parameters
+            assert scan.scan_params is not None
+            precursor = scan.scan_params.get(ScanParameters.PRECURSOR_MZ)
+
             # add dynamic exclusion item to the exclusion list to prevent the same precursor ion being fragmented
             # multiple times in the same mz and rt window
             # Note: at this point, fragmentation has occurred and time has been incremented! so the time when
