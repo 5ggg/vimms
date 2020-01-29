@@ -161,6 +161,7 @@ def get_base_scoring_df(ms1_picked_peaks_file=None, ms2_picked_peaks_file=None):
         ms1_scoring_df['m/z max'] = find_col(ms1_df, 'Peak m/z max')
         ms1_scoring_df['rt min'] = find_col(ms1_df, 'Peak RT start') * 60
         ms1_scoring_df['rt max'] = find_col(ms1_df, 'Peak RT end') * 60
+        ms1_scoring_df['rt centre'] = find_col(ms1_df, 'row retention time') * 60
     if ms2_picked_peaks_file is not None:
         ms2_df = pd.read_csv(ms2_picked_peaks_file)
         # get MS2 picked peak information
@@ -168,6 +169,7 @@ def get_base_scoring_df(ms1_picked_peaks_file=None, ms2_picked_peaks_file=None):
         ms2_scoring_df['m/z max'] = find_col(ms2_df, 'Peak m/z max')
         ms2_scoring_df['rt min'] = find_col(ms2_df, 'Peak RT start') * 60
         ms2_scoring_df['rt max'] = find_col(ms2_df, 'Peak RT end') * 60
+        ms2_scoring_df['rt centre'] = find_col(ms2_df, 'row retention time') * 60
     # return
     if ms1_picked_peaks_file is None and ms2_picked_peaks_file is None:
         return None
