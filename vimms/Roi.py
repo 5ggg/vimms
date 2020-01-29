@@ -2,6 +2,7 @@ import bisect
 import math
 import os
 from collections import OrderedDict
+import pandas as pd
 
 import numpy as np
 import pylab as plt
@@ -57,6 +58,12 @@ class Roi(object):
 
     def get_max_intensity(self):
         return max(self.intensity_list)
+
+    def get_min_intensity(self):
+        return min(self.intensity_list)
+
+    def get_autocorrelation(self, lag=1):
+        return pd.Series(self.intensity_list).autocorr(lag=lag)
 
     def add(self, mz, rt, intensity):
         self.mz_list.append(mz)
@@ -404,3 +411,5 @@ def plot_roi(roi):
     plt.ylabel('Intensity')
     plt.xlabel('RT')
     plt.show()
+
+
