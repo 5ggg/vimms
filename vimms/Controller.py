@@ -6,11 +6,13 @@ from collections import defaultdict
 import numpy as np
 import pylab as plt
 from loguru import logger
+from time import time
 
 from vimms.Common import POSITIVE, DEFAULT_MS1_SCAN_WINDOW, DEFAULT_MSN_SCAN_WINDOW, DEFAULT_COLLISION_ENERGY
 from vimms.DIA import DiaWindows
 from vimms.MassSpec import ScanParameters, ExclusionItem
 from vimms.Roi import match, Roi
+from vimms.PeakDetector import get_roi_classification_params
 
 
 class Precursor(object):
@@ -454,7 +456,7 @@ class RoiController(TopNController):
 
     def __init__(self, ionisation_mode, isolation_width, mz_tol, min_ms1_intensity, min_roi_intensity,
                  min_roi_length, score_method, N=None, rt_tol=10, score_params=None, min_roi_length_for_fragmentation=1,
-                 roi_picking_model=None, dsda_scoring_df=None):
+                 roi_picking_model=None, roi_param_dict=None, dsda_scoring_df=None):
         super().__init__(ionisation_mode, N, isolation_width, mz_tol, rt_tol, min_ms1_intensity)
 
         # ROI stuff
@@ -464,6 +466,7 @@ class RoiController(TopNController):
 
         # peak picking stuff
         self.roi_picking_model = roi_picking_model
+        self.roi_param_dict = roi_param_dict
 
         # Dsda stuff
         self.dsda_scoring_df = dsda_scoring_df
@@ -499,7 +502,9 @@ class RoiController(TopNController):
             rt = self.last_ms1_scan.rt
 
             # loop over points in decreasing score
+            # t0 = time()
             scores = self._get_scores()
+            # print(time()-t0)
             idx = np.argsort(scores)[::-1]
             for i in idx:
                 mz = self.current_roi_mzs[i]
@@ -571,8 +576,10 @@ class RoiController(TopNController):
                 del self.live_roi[pos]
                 del self.live_roi_fragmented[pos]
                 del self.live_roi_last_rt[pos]
-        self.roi_scores = self._get_roi_scores()
-        self.dsda_scores = self._get_dsda_scores()
+        if self.score_method == 'Peak Picking':
+            self.roi_scores = self._get_roi_scores()
+        if self.score_method == 'DsDA':
+            self.dsda_scores = self._get_dsda_scores()
 
     def _get_scores(self):
         if self.score_method == "Top N":
@@ -602,10 +609,15 @@ class RoiController(TopNController):
         return scores
 
     def _get_roi_scores(self):
-        roi_scores = [1 for i in self.live_roi]  # TODO: implement ROi scores
-        # roi_scores = self.roi_picking_model(self.live_rois)
-        # takes self.roi_picking_model which is pre-trained and has a function called _predict which returns
-        # probability of peak
+        if not self.live_roi:
+            return []
+        roi_scores = []
+        for roi in self.live_roi:
+            if len(roi.mz_list) < self.min_roi_length_for_fragmentation:
+                roi_scores.append(0)
+            else:
+                roi_df = get_roi_classification_params([roi], self.roi_param_dict)
+                roi_scores.append(self.roi_picking_model.predict_proba(roi_df)[0][1])
         return roi_scores
 
     def _get_dsda_scores(self):
