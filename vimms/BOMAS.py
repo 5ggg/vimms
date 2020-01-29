@@ -25,12 +25,10 @@ XML_TEMPLATE_MS1 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\mzmine_batch_ms1
 XML_TEMPLATE_MS2 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\mzmine_batch_ms2.xml'
 QCB_XML_TEMPLATE_MS1 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\QCB_mzmine_batch_ms1.xml'
 QCB_XML_TEMPLATE_MS2 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\QCB_mzmine_batch_ms2.xml'
-QCB2_XML_TEMPLATE_MS1 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\QCB2_mzmine_batch_ms1.xml'
-QCB2_XML_TEMPLATE_MS2 = 'C:\\Users\\Vinny\\work\\vimms\\batch_files\\QCB2_mzmine_batch_ms2.xml'
 
 
 QCB_MZML2CHEMS_DICT = {'min_ms1_intensity': 1.75E5,
-                  'mz_tol': 10,
+                  'mz_tol': 2,
                   'mz_units':'ppm',
                   'min_length':1,
                   'min_intensity':0,
@@ -57,7 +55,7 @@ MADELEINE_TOP_N_CONTROLLER_PARAM_DICT = {"ionisation_mode": POSITIVE,
                                          "rt_range": [(0, 600)],
                                          "isolation_width": 1}
 
-QCB_SCORE_PARAM_DICT = {'min_ms1_intensity': 0,
+QCB_SCORE_PARAM_DICT = {'min_ms1_intensity': 1.75E5,
                         'matching_mz_tol': 30,
                         'matching_rt_tol': 10}
 
@@ -87,6 +85,7 @@ class BaseOptimiser(object):
                  chem_param_dict=QCB_MZML2CHEMS_DICT,
                  controller_param_dict=QCB_TOP_N_CONTROLLER_PARAM_DICT,
                  score_param_dict=QCB_SCORE_PARAM_DICT,
+                 min_ms1_intensity=1.75E5,
                  ms1_mzml=None,
                  ms1_picked_peaks_file=None,
                  dataset_file=None,
@@ -98,36 +97,52 @@ class BaseOptimiser(object):
         self.xml_template_ms1 = xml_template_ms1
         self.xml_template_ms2 = xml_template_ms2
         self.mzmine_command = mzmine_command
-        idx = 0
+        self.controller_method = controller_method
+        self.controller_param_dict = controller_param_dict
+        self.score_param_dict = score_param_dict
 
         self.method_name = self.__class__.__name__
+        self.min_ms1_intensity =  min_ms1_intensity
 
         self.base_name = self._get_base_name(ms1_mzml, ms1_picked_peaks_file, dataset_file)
         self.output_dir, self.ms2_dir, self.picked_peaks_dir = self._get_directories(base_dir, controller_method)
         self.dataset, self.ms1_picked_peaks_file = self._get_data(ms1_mzml, ms1_picked_peaks_file, dataset_file, ps, chem_param_dict)
 
         # set up mass spec
-        mass_spec = IndependentMassSpectrometer(POSITIVE, self.dataset, ps, add_noise=add_noise)
+        self.mass_spec = IndependentMassSpectrometer(POSITIVE, self.dataset, ps, add_noise=add_noise)
 
         # get initial params and set up pandas dataframe
         self.initial_params, self.results = self._get_initial_params()
 
         # run optimisation algorithm
-        next_flex_param_dict = self._get_next_params(idx)
-        idx += 1
-        while next_flex_param_dict is not None:
-            new_results = self._get_controller_score(mass_spec, ms1_picked_peaks_file, controller_method,
-                                               controller_param_dict, next_flex_param_dict, score_param_dict, idx - 1)
-            self.results.loc[len(self.results)] = new_results
-            next_flex_param_dict = self._get_next_params(idx)
-            idx += 1
-        # TODO: when initial parameters have been ran go to _get_extra_results(). Just return already existing results
-        #  for GridSearch. Overwrite function for BOO, so does the new BO methods and returns results _ BO results
+        self.results = self.run_initial_simulations()
+        self.results = self.run_optimiser_simulations()
+
+        # save results
         df_name = self.base_name + '_df_results'
         self.results.to_pickle(self.output_dir + '\\' + df_name + '.p')
 
-    def _get_extra_results(self):
-        return self.results # TODO: work out what I wanted to do here
+    def run_initial_simulations(self):
+        if self.parallel:
+            results = run_parallel_controller(self.controller_method, search_param_dict, base_param_dict)
+            return results
+        else:
+            results = self.results
+            for idx in range(len(self.initial_params)):
+                next_flex_param_dict = self.initial_params[idx]
+                new_results = self._get_controller_score(self.mass_spec, self.ms1_picked_peaks_file, self.controller_method,
+                                                         self.controller_param_dict, next_flex_param_dict, idx)
+                results.loc[len(self.results)] = new_results
+            return results
+
+    def run_optimiser_simulations(self):
+        NotImplementedError()
+
+    def _get_parallel_params(self):
+        NotImplementedError()
+
+    def _run_parrallel(self):
+        NotImplementedError()
 
     def _get_base_name(self, ms1_mzml, ms1_picked_peaks_file, dataset_file):
         if ms1_mzml is not None:
@@ -137,7 +152,7 @@ class BaseOptimiser(object):
         elif dataset_file is not None:
             base_name = Path(dataset_file).stem
         else:
-            sys.exit('No data provided')  # TODO: Check whether this works properly
+            sys.exit('No data provided')
         return base_name
 
     def _get_directories(self, base_dir, controller_method):
@@ -166,11 +181,8 @@ class BaseOptimiser(object):
     def _get_initial_params(self):
         NotImplementedError()
 
-    def _get_next_params(self):
-        NotImplementedError()
-
     def _get_controller_score(self, mass_spec, ms1_picked_peaks_file, controller_method,
-                             controller_param_dict, next_flex_param_dict, score_param_dict, idx):
+                             controller_param_dict, next_flex_param_dict, idx):
         controller = self._get_controller(controller_method, controller_param_dict, next_flex_param_dict)
         env = Environment(mass_spec, controller, controller_param_dict['rt_range'][0][0],
                           controller_param_dict['rt_range'][0][1], progress_bar=True)
@@ -184,29 +196,33 @@ class BaseOptimiser(object):
                    mzmine_command=self.mzmine_command)
         ms2_picked_peaks_file = self.picked_peaks_dir + '\\' + controller_name + '_pp.csv'
 
-        score = peak_scoring(env.controller, ms1_picked_peaks_file, ms2_picked_peaks_file)
-        # score = controller_score(controller, self.dataset, ms1_picked_peaks_file, ms2_picked_peaks_file,
-        #                          score_param_dict['min_ms1_intensity'],
-        #                          score_param_dict['matching_mz_tol'],
-        #                          score_param_dict['matching_rt_tol'])
+        score_count, score_int, prec, rec, f1 = peak_scoring(env.controller, ms1_picked_peaks_file, ms2_picked_peaks_file,
+                                                             self.dataset, self.min_ms1_intensity, self.score_param_dict)
 
-        return [score] + list(next_flex_param_dict.values())
+        if self.scoring_method is None:
+            return [score_count, score_int, prec, rec, f1] + list(next_flex_param_dict.values())
+        elif self.scoring_method == 'Peak Count':
+            return [score_count] + list(next_flex_param_dict.values())
+        elif self.scoring_method == 'Log Peak Intensity':
+            return [score_int] + list(next_flex_param_dict.values())
+        else:
+            return [f1] + list(next_flex_param_dict.values())
 
     def _get_controller(self, controller_method, controller_param_dict, flex_controller_param_dict):
         if controller_method == 'TopNController':
-            controller = TopNController(controller_param_dict["ionisation_mode"],
+            controller = TopNController(controller_param_dict["ionisation_mode"], # TODO: make this more general so it can find params from either dictionary
                                         flex_controller_param_dict['N'],
                                         controller_param_dict["isolation_width"],
                                         controller_param_dict["mz_tol"],
                                         flex_controller_param_dict['DEW'],
                                         controller_param_dict["min_ms1_intensity"])
-        return controller
+        return controller  # TODO: add more controller options
 
-# TODO: add parellel option to initial params controllers
 
 class GridSearch(BaseOptimiser):
     def __init__(self, flex_controller_param_dict, *args, **kwargs):
         self.flex_controller_param_dict = flex_controller_param_dict
+        self.scoring_method = None
         super().__init__(*args, **kwargs)
 
     def _get_initial_params(self):
@@ -214,24 +230,27 @@ class GridSearch(BaseOptimiser):
         allNames = sorted(self.flex_controller_param_dict)
         combinations = list(it.product(*(self.flex_controller_param_dict[Name] for Name in allNames)))
         dictionaries = [dict(zip(allNames, combinations[i])) for i in range(len(combinations))]
-        col_names = ['F1'] + list(dictionaries[0].keys())
+        col_names = ['Peak Count', 'Log Peak Intensity', 'Precision', 'Recall', 'F1'] + list(dictionaries[0].keys()) # this code is repeated, tryi
         df = pd.DataFrame(columns=col_names)
-        return dictionaries, df # TODO: make N an exception which rounds it
+        return dictionaries, df
 
-    def _get_next_params(self, idx):
-        if idx < len(self.initial_params):
-            return self.initial_params[idx]
-        else:
-            return None
+    def run_optimiser_simulations(self):
+        return self.results
 
 
 class BOMAS(BaseOptimiser):
-    def __init__(self, N_init, N_BO, GP_param, theta_range, *args, **kwargs):
-        self.N_init = N_init
-        self.N_BO = N_BO
-        self.GP_param = GP_param
-        self.theta_range = theta_range
-        super().__init__(*args, **kwargs)
+    def __init__(self, scoring_method, N_init, N_BO, gp_kernel, gp_noise_sd, theta_range, *args, **kwargs):
+        self.scoring_method = scoring_method
+        if self.scoring_method == 'Peak Count' or self.scoring_method == 'Log Peak Intensity' or self.scoring_method == 'F1':
+            self.N_init = N_init
+            self.N_BO = N_BO
+            self.gp_kernel = gp_kernel
+            self.gp_noise_sd = gp_noise_sd
+            self.theta_range = theta_range
+            super().__init__(*args, **kwargs)
+        else:
+            sys.exit('Invalid scoring method. Must be Peak Count, Log Peak Intensity, F1')
+
 
     def _get_initial_params(self):
         theta_array = [list(self.theta_range[list(self.theta_range.keys())[i]][0]) for i in range(len(self.theta_range))]
@@ -243,35 +262,73 @@ class BOMAS(BaseOptimiser):
             which_N = list(np.where(np.array(list(self.theta_range.keys())) == 'N')[0])[0]
             scaled_theta[which_N] = np.round(scaled_theta[which_N], 0)
         dictionaries = [dict(zip(self.theta_range.keys(), scaled_theta[:, i])) for i in range(len(scaled_theta[0]))]
-        col_names = ['F1'] + list(dictionaries[0].keys())
+        col_names = [self.scoring_method] + list(dictionaries[0].keys())
         df = pd.DataFrame(columns=col_names)
         return dictionaries, df
 
-    def _get_next_params(self, idx):
-        if idx < len(self.initial_params):
-            return self.initial_params[idx]
-        elif idx < self.N_init + self.N_BO:
-            return self._get_next_BO_params(idx)
-        else:
-            return None
-
-    def _get_next_BO_params(self, idx):
+    def _get_next_BO_params(self):
         noise = 0.1 # TODO: set this up properly at the start
         bounds = np.array([list(self.theta_range[list(self.theta_range.keys())[i]][0]) for i in range(len(self.theta_range))])
         m52 = ConstantKernel(1.0) * Matern(length_scale=1.0, nu=2.5)
         self.gpr = GaussianProcessRegressor(kernel=m52, alpha=noise ** 2)
-        y = self.results[self.results.columns[0]].values
+        y = self.results[self.scoring_method].values
         theta = self.results[self.results.columns[1:]].values
         self.gpr.fit(theta, y)
-        theta_next = propose_location(expected_improvement, theta, y, self.gpr, bounds) # TODO: add bounds + other parameters to start
+        theta_next = propose_location(expected_improvement, theta, y, self.gpr, bounds)  # TODO: add bounds + other parameters to start
         theta_next_dict = dict(zip(self.theta_range.keys(), theta_next.flatten().tolist()))
         if 'N' in list(self.theta_range.keys()):
             theta_next_dict['N'] = round(theta_next_dict['N'])
         return theta_next_dict
 
+    def run_optimiser_simulations(self):
+        results = self.results
+        for i in range(self.N_BO):
+            idx = self.N_init + i
+            next_flex_param_dict = self._get_next_BO_params()
+            new_results = self._get_controller_score(self.mass_spec, self.ms1_picked_peaks_file, self.controller_method, self.controller_param_dict, next_flex_param_dict, idx)
+            results.loc[len(self.results)] = new_results
+        return results
+
+        # X_init = np.array(self.results[self.results.columns[1:]].values)
+        # y_init = -np.array(self.results[self.scoring_method].values)
+        # gpr = GaussianProcessRegressor(kernel=self.gp_kernel, alpha=self.gp_noise_sd ** 2)
+        # results = gp_minimize(lambda x: -self.optimiser_function(np.array(x))[0],
+        #                       self.gp_bounds.tolist(),
+        #                       base_estimator=gpr,
+        #                       acq_func='EI',  # expected improvement
+        #                       xi=0.01,  # exploitation-exploration trade-off
+        #                       n_calls=self.N_BO,  # number of iterations
+        #                       n_random_starts=0,  # initial samples are provided
+        #                       x0=X_init.tolist(),  # initial samples
+        #                       y0=y_init.ravel())
+        # return results  # TODO: change to return the results in the right format
+
+    # def optimiser_function(self, x):  # TODO: this and function above are the wrong way around
+        # needs to take a vector x and return y
+        # will need to convert x into dictionary format
+        # get idx
+        # new_results = self._get_controller_score(self.mass_spec, self.ms1_picked_peaks_file, self.controller_method,
+        #                                         self.controller_param_dict, next_flex_param_dict, idx)
+        # return right bit of new results
 
 
-# TODO: add multi BOMAS which is able to work in parallel
+def run_parallel_controller(controller_method, search_param_dict, base_param_dict):
+    NotImplementedError()
+    # TODO: make this function call the parallel evaluation method
+    # will create a results pandas
+    # That function will call the create_controller function, which will go into the score function
+
+
+def create_controller(controller_method, search_param_dict, base_param_dict):
+    # TODO: make this function create the relevant controller based on the inputs
+    # Can be used in the parallel and non parallel version of the controllers
+    NotImplementedError()
+
+
+def controller_score():  # TODO: this function may already be defined, be careful!!!
+    NotImplementedError()
+    # TODO: move this out of the optimiser function
+
 
 
 def Heatmap_GridSearch(GridSearch_object, outcome_name, X_name, Y_name):
@@ -346,7 +403,7 @@ def propose_location(acquisition, X_sample, Y_sample, gpr, bounds, n_restarts=25
 
 
 def load_scores(colnames, peak_files,  ms2_dir, dataset_file, ms1_picked_peaks_file, score_param_dict):
-    dataset = load_obj(dataset_file)
+    dataset = load_obj(dataset_file)  # TODO: this needs updating
     results = pd.DataFrame(columns=colnames)
     for i in range(len(peak_files)):
         ms2_picked_peaks_file = peak_files[i]
@@ -363,7 +420,7 @@ def load_scores(colnames, peak_files,  ms2_dir, dataset_file, ms1_picked_peaks_f
 
 def GetScaledValues(n_samples, theta_ranges):
     values = lhs(len(theta_ranges), samples = n_samples, criterion='center')
-    scaled_values = np.array([(
-    values[:, i] * (theta_ranges[i][1] - theta_ranges[i][0]) + theta_ranges[i][0]).tolist()
+    scaled_values = np.array([(values[:, i] * (theta_ranges[i][1] - theta_ranges[i][0]) + theta_ranges[i][0]).tolist()
                              for i in range(len(theta_ranges))])
     return scaled_values
+
