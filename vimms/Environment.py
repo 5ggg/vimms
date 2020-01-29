@@ -59,15 +59,20 @@ class Environment(object):
         # run mass spec
         bar = tqdm(total=self.max_time - self.min_time, initial=0) if self.progress_bar else None
         self.mass_spec.fire_event(IndependentMassSpectrometer.ACQUISITION_STREAM_OPENING)
+
+        # set this to add initial MS1 scan
+        initial_scan = True
         try:
             # perform one step of mass spec up to max_time
             while self.mass_spec.time < self.max_time:
                 # controller._process_scan() is called here immediately when a scan is produced within a step
-                scan = self.mass_spec.step()
+                scan = self.mass_spec.step(initial_scan)
                 # update controller internal states AFTER a scan has been generated and handled
                 self.controller.update_state_after_scan(scan)
                 # increment progress bar
                 self._update_progress_bar(bar, scan)
+                # no longer initial scan
+                initial_scan = False
         except Exception as e:
             raise e
         finally:

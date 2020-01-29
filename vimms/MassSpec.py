@@ -273,14 +273,17 @@ class IndependentMassSpectrometer(object):
     def set_environment(self, env):
         self.environment = env
 
-    def step(self):
+    def step(self, initial_scan=False):
         """
         Performs one step of a mass spectrometry process
         :return:
         """
 
         # get scan param from the processing queue and do one scan
-        params = self._get_params()
+        if initial_scan:
+            params = self.environment.get_default_scan_params()
+        else:
+            params = self._get_params()
         scan = self._get_scan(self.time, params)
 
         # notify the controller that a new scan has been generated
@@ -395,7 +398,7 @@ class IndependentMassSpectrometer(object):
         """
         # if the processing queue is empty, then just do the repeating scan
         if len(self.processing_queue) == 0:
-            params = self.environment.get_default_scan_params()
+            params = self.environment.get_default_scan_params()  # this should not occurs until mass spec and controller run completely separetely
         else:
             # otherwise pop the parameter for the next scan from the queue
             params = self.processing_queue.pop(0)
@@ -689,7 +692,7 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         self.fusion_bridge.SetEventHandlers(scan_handler_delegate, state_changed_delegate, custom_scan_delegate)
 
         # send the initial custom scan to start the custom scan generation process
-        self._send_custom_scan()
+        self._send_initial_custom_scan()
 
     def step(self, iapi_scan):
         """
@@ -735,6 +738,54 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         if self.fusion_bridge is not None:
             self.fusion_bridge.CloseDown()
             self.fusion_bridge = None
+
+    def _send_initial_custom_scan(self):
+        """
+        Translates the last ScanParameter object in the processing queue to a custom scan using FusionBridge
+        and sends it over to the actual mass spec.
+        """
+        # get one scan param from the mass spec processing queue and send it over
+        params = self.environment.get_default_scan_params()
+        if params is None:
+            return None
+
+        ms_level = params.get(ScanParameters.MS_LEVEL)
+        precursor_mass = 0.0
+        if ms_level == 2:
+            precursor_mass = params.get(ScanParameters.PRECURSOR_MZ).precursor_mz
+            assert precursor_mass is not None
+
+        isolation_width = params.get(ScanParameters.ISOLATION_WIDTH)
+        collision_energy = params.get(ScanParameters.COLLISION_ENERGY)
+        polarity = params.get(ScanParameters.POLARITY)
+        first_mass = params.get(ScanParameters.FIRST_MASS)
+        last_mass = params.get(ScanParameters.LAST_MASS)
+
+        assert collision_energy is not None
+        assert polarity is not None
+        assert first_mass is not None
+        assert last_mass is not None
+
+        single_processing_delay = DEFAULT_IAPI_SINGLE_PROCESSING_DELAY
+
+        # FIXME: can be dangerous if a new custom scan is received but running number has not been incremented!!
+        current_running_number = self.running_number
+        self.running_number += 1
+
+        assert current_running_number not in self.scan_number_to_params
+        self.scan_number_to_params[current_running_number] = params
+
+        logger.debug('Sending custom scan %d with parameters %s' % (current_running_number, str(params)))
+        success = self.fusion_bridge.CreateCustomScan(current_running_number, precursor_mass, isolation_width,
+                                                      collision_energy, ms_level, polarity, first_mass, last_mass,
+                                                      single_processing_delay)
+        if not success:
+            msg = 'Failed to send custom scan %d with parameters %s, please check the logs!!' % (
+                current_running_number, str(params))
+            logger.warning(msg)
+            self.close()
+
+        logger.debug('Successfully sent custom scan %d' % (current_running_number))
 
     def _send_custom_scan(self):
         """
@@ -803,3 +854,18 @@ class IAPIMassSpectrometer(IndependentMassSpectrometer):
         # alternatively it seems that we can also get it from the master scan field of the header
         real_out = int(iapi_scan.Header['MasterScan'])
         return real_out
+
+    def _get_params(self):
+        """
+        Retrieves a new set of scan parameters from the processing queue
+        :return: A new set of scan parameters from the queue if available,
+            otherwise it returns nothing (default scan set in actual MS)
+        """
+        # if the processing queue is empty, then just do the repeating scan
+        if len(self.processing_queue) == 0:
+            params = None
+        else:
+            # otherwise pop the parameter for the next scan from the queue
+            params = self.processing_queue.pop(0)
+        return params
+
