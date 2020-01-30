@@ -24,6 +24,7 @@ namespace FusionLibrary
         private IFusionInstrumentAccess InstrumentAccess { get; set; }
         private IFusionMsScanContainer ScanContainer { get; set; }
         private IFusionControl InstrumentControl { get; set; }
+        private IFusionInstrumentAccessContainer FusionContainer { get; set; }
         public IScans ScanControl { get; set; }
 
         // store the user-passed callback here as delegates
@@ -39,33 +40,33 @@ namespace FusionLibrary
             LogDir = logDir;
             ShowConsoleLogs = showConsoleLogs;
 
-            IFusionInstrumentAccessContainer fusionContainer = null;
+            FusionContainer = null;
             if (!String.IsNullOrEmpty(debugMzML)) // create fake Fusion container that reads from mzML file
             {
                 WriteLog("FusionBridge constructor called in debug mode");
                 WriteLog(string.Format("Reading scans from {0}", debugMzML));
-                fusionContainer = new MzMLFusionContainer(debugMzML);
+                FusionContainer = new MzMLFusionContainer(debugMzML);
             }
             else // needs license to connect to the real instrument
             {
                 //// Use the Factory creation method to create a Fusion Access Container
                 WriteLog("FusionBridge constructor called");
-                fusionContainer = getIFusionInstrumentAccessContainer();
+                FusionContainer = getIFusionInstrumentAccessContainer();
             }
 
 
             // Connect to the service by going 'online'
-            fusionContainer.StartOnlineAccess();
+            FusionContainer.StartOnlineAccess();
 
             // Wait until the service is connected 
             // (better through the event, but this is nice and simple)
-            while (!fusionContainer.ServiceConnected)
+            while (!FusionContainer.ServiceConnected)
             {
                 ;
             }
 
             // From the instrument container, get access to a particular instrument
-            InstrumentAccess = fusionContainer.Get(1);
+            InstrumentAccess = FusionContainer.Get(1);
             ScanContainer = InstrumentAccess.GetMsScanContainer(0);
             WriteLog("Detector class: " + ScanContainer.DetectorClass);
 
@@ -289,6 +290,9 @@ namespace FusionLibrary
             {
                 WriteLog("Removing event handlers");
                 RemoveEventHandlers();
+
+                WriteLog("Disposing Fusion Access Container");
+                FusionContainer.Dispose();
 
                 WriteLog("Goodbye Cruel World");
 
