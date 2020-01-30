@@ -50,14 +50,20 @@ class Controller(object):
         if scan.num_peaks > 0:
             self._plot_scan(scan)
 
-        # we get an ms1 scan, if it has a peak and all the pending tasks have been processed,
+        # we get an ms1 scan and it has some peaks AND all the pending tasks have been sent and processed AND
+        # this ms1 scan is a custom scan we'd sent before (not a method scan)
         # then store it for fragmentation next time
-        if scan.ms_level == 1 and scan.num_peaks > 0 and outgoing_queue_size == 0 and pending_tasks_size == 0:
+        if scan.ms_level == 1 and \
+                scan.num_peaks > 0 and \
+                outgoing_queue_size == 0 and \
+                pending_tasks_size == 0 and \
+                scan.scan_params is not None:
             self.last_ms1_scan = scan
         else:
             self.last_ms1_scan = None
 
         logger.debug('outgoing_queue_size = %d, pending_tasks_size = %d' % (outgoing_queue_size, pending_tasks_size))
+        logger.debug('scan.scan_params = %s' % scan.scan_params)
         logger.debug('last_ms1_scan = %s' % self.last_ms1_scan)
 
         # impelemnted by subclass
