@@ -262,7 +262,7 @@ class TopNController(Controller):
         dda_scan_params.set(ScanParameters.COLLISION_ENERGY, collision_energy)
         dda_scan_params.set(ScanParameters.POLARITY, self.environment.mass_spec.ionisation_mode)
         dda_scan_params.set(ScanParameters.FIRST_MASS, DEFAULT_MSN_SCAN_WINDOW[0])
-        dda_scan_params.set(ScanParameters.LAST_MASS, DEFAULT_MSN_SCAN_WINDOW[1])
+        dda_scan_params.set(ScanParameters.LAST_MASS, precursor.precursor_mz)
         return dda_scan_params
 
     def _add_precursor_info(self, scan):
