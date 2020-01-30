@@ -67,12 +67,14 @@ class Environment(object):
             while self.mass_spec.time < self.max_time:
                 # controller._process_scan() is called here immediately when a scan is produced within a step
                 scan = self.mass_spec.step(initial_scan)
+                if initial_scan and scan.num_peaks > 0:
+                    # no longer initial scan
+                    initial_scan = False
+
                 # update controller internal states AFTER a scan has been generated and handled
                 self.controller.update_state_after_scan(scan)
                 # increment progress bar
                 self._update_progress_bar(bar, scan)
-                # no longer initial scan
-                initial_scan = False
         except Exception as e:
             raise e
         finally:

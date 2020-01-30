@@ -282,7 +282,7 @@ class IndependentMassSpectrometer(object):
         # get scan param from the processing queue and do one scan
         if initial_scan:
             params = self.environment.get_default_scan_params()
-            is_method_scan = True
+            is_method_scan = False
         else:
             params, is_method_scan = self._get_params()
         scan = self._get_scan(self.time, params)
