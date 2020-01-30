@@ -28,7 +28,7 @@ DEFAULT_ISOLATION_WIDTH = 0.7
 CHEM_DATA = 'data'
 CHEM_NOISE = 'noise'
 
-DEFAULT_IAPI_SINGLE_PROCESSING_DELAY = 0.50
+DEFAULT_IAPI_SINGLE_PROCESSING_DELAY = 0.0
 
 # Note: In Fusion bridge (C#), the analyzer is hardcoded to Orbitrap and activation type to HCD.
 # Based on stefan's recommendations:
