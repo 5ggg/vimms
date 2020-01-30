@@ -282,9 +282,14 @@ class IndependentMassSpectrometer(object):
         # get scan param from the processing queue and do one scan
         if initial_scan:
             params = self.environment.get_default_scan_params()
+            is_method_scan = True
         else:
-            params = self._get_params()
+            params, is_method_scan = self._get_params()
         scan = self._get_scan(self.time, params)
+
+        # following IAPI Mass Spec class, a method scan (not a custom scan) should have its scan_params set to None
+        if is_method_scan:
+            scan.scan_params = None
 
         # notify the controller that a new scan has been generated
         # at this point, the MS_SCAN_ARRIVED event handler in the controller is called
@@ -399,10 +404,12 @@ class IndependentMassSpectrometer(object):
         # if the processing queue is empty, then just do the repeating scan
         if len(self.processing_queue) == 0:
             params = self.environment.get_default_scan_params()  # this should not occurs until mass spec and controller run completely separetely
+            is_method_scan = True
         else:
             # otherwise pop the parameter for the next scan from the queue
             params = self.processing_queue.pop(0)
-        return params
+            is_method_scan = False
+        return params, is_method_scan
 
     def _increase_time(self, current_level, current_N, current_DEW, next_scan_param):
         # look into the queue, find out what the next scan ms_level is, and compute the scan duration
