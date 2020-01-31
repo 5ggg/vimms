@@ -286,13 +286,14 @@ namespace FusionLibrary
 
         public void CloseDown()
         {
+            WriteLog("Removing event handlers");
+            RemoveEventHandlers();
+
+            WriteLog("Disposing Fusion Access Container");
+            FusionContainer.Dispose();
+
             if (Logs.Count > 0)
             {
-                WriteLog("Removing event handlers");
-                RemoveEventHandlers();
-
-                WriteLog("Disposing Fusion Access Container");
-                FusionContainer.Dispose();
 
                 WriteLog("Goodbye Cruel World");
 
