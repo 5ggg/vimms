@@ -12,7 +12,6 @@ from vimms.Common import POSITIVE, DEFAULT_MS1_SCAN_WINDOW, DEFAULT_MSN_SCAN_WIN
 from vimms.DIA import DiaWindows
 from vimms.MassSpec import ScanParameters, ExclusionItem
 from vimms.Roi import match, Roi
-from vimms.PeakDetector import get_roi_classification_params
 
 
 class Precursor(object):
