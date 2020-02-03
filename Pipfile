@@ -21,10 +21,12 @@ requests = "*"
 trio = "*"
 loguru = "*"
 pythonnet = {version = "*",sys_platform = "== 'win32'"}
-pywin32 = {version = "!= 226", sys_platform = "== 'win32'"} # https://github.com/mhammond/pywin32/issues/1439
+pywin32 = {version = "!= 226",sys_platform = "== 'win32'"} # https://github.com/mhammond/pywin32/issues/1439
 pyDOE = "*"
 networkx = "*"
 jsonpickle = "*"
+xgboost = {version = "*",sys_platform = "!= 'win32'"}
+xgboost_win = {path = "./xgboost/xgboost-0.90-cp37-cp37m-win32.whl",sys_platform = "== 'win32'"}
 
 [dev-packages]
 
