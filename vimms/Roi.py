@@ -406,10 +406,24 @@ def extract_roi(file_names, out_dir, pattern, mzml_path, ps, roi_mz_tol=10, roi_
         save_obj(data, os.path.join(out_dir, out_name))
 
 
-def plot_roi(roi):
-    plt.plot(roi.rt_list, roi.intensity_list, 'o')
+def plot_roi(roi, statuses=None):
+    if statuses is not None:
+        colours = []
+        for s in statuses:
+            if s == 'Noise':
+                colours.append('red')
+            elif s == 'Increase':
+                colours.append('blue')
+            elif s == 'Decrease':
+                colours.append('yellow')
+            else:
+                colours.append('green')
+        plt.scatter(roi.rt_list, roi.intensity_list, color=colours)
+    else:
+        plt.scatter(roi.rt_list, roi.intensity_list)
     plt.ylabel('Intensity')
     plt.xlabel('RT')
     plt.show()
+
 
 
