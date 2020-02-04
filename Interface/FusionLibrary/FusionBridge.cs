@@ -227,11 +227,11 @@ namespace FusionLibrary
                     cs.Values["ScanType"] = "MSn";
                     cs.Values["OrbitrapResolution"] = "7500";
                 }
+                cs.Values["Microscans"] = "1";
                 cs.Values["ActivationType"] = "HCD";
                 cs.Values["DataType"] = "Centroid";
                 cs.Values["AGCTarget"] = "30000";
                 cs.Values["MaxIT"] = "100";
-                cs.Values["Microscans"] = "3";
 
                 // Dump key-value pairs in cs.Values
                 foreach (KeyValuePair<string, string> kvp in cs.Values)
