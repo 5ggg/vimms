@@ -542,7 +542,11 @@ class RoiController(TopNController):
                                                            self.mz_tols, self.rt_tols, DEFAULT_COLLISION_ENERGY)
                 new_tasks.append(dda_scan_params)
 
-                # set this ms1 scan as has been processed
+            # an MS1 is added here, as we no longer send MS1s as default
+            ms1_scan_params = self.environment.get_default_scan_params()
+            new_tasks.append(ms1_scan_params)
+
+            # set this ms1 scan as has been processed
             self.last_ms1_scan = None
         return new_tasks
 
