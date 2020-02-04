@@ -33,12 +33,14 @@ namespace FusionLibrary
         private UserCreateCustomScanDelegate customScanHandler;
         private string LogDir { get; set; }
         private bool ShowConsoleLogs { get; set; }
+        private bool canSendCustomScan;
 
         public FusionBridge(string debugMzML, string logDir, bool showConsoleLogs)
         {
             Logs = new List<string>();
             LogDir = logDir;
             ShowConsoleLogs = showConsoleLogs;
+            canSendCustomScan = true;
 
             FusionContainer = null;
             if (!String.IsNullOrEmpty(debugMzML)) // create fake Fusion container that reads from mzML file
@@ -149,6 +151,13 @@ namespace FusionLibrary
 
             // run user scan event handler
             scanHandler(scan);
+
+            // send custom scan if there's one
+            if (this.canSendCustomScan)
+            {
+                customScanHandler();
+            }
+
         }
 
         private void StateChangedHandler(object sender, StateChangedEventArgs e)
@@ -165,7 +174,7 @@ namespace FusionLibrary
         private void CreateCustomScanHandlerHandler(object sender, EventArgs e)
         {
             WriteLog("FusionBridge receives CanAcceptNextCustomScan event");
-            customScanHandler();
+            this.canSendCustomScan = true;
         }
 
         public void DumpPossibleParameters()
@@ -257,6 +266,7 @@ namespace FusionLibrary
                         {
                             WriteLog(String.Format("Successfully placed a custom MSn scan (runningNumber={0})", cs.RunningNumber));
                         }
+                        this.canSendCustomScan = false; // wait until we've received CanAcceptNextCustomScan before setting this to true
                         return true;
                     }
                 }
