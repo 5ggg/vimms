@@ -450,6 +450,10 @@ class HybridController(TopNController):
                     new_tasks.append(dda_scan_params)
                     fragmented_count += 1
 
+            # an MS1 is added here, as we no longer send MS1s as default
+            ms1_scan_params = self.environment.get_default_scan_params()
+            new_tasks.append(ms1_scan_params)
+
             # set this ms1 scan as has been processed
             self.last_ms1_scan = None
         return new_tasks
