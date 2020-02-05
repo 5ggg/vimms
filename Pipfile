@@ -27,6 +27,7 @@ networkx = "*"
 jsonpickle = "*"
 xgboost = {version = "*",sys_platform = "!= 'win32'"}
 xgboost_win = {path = "./xgboost/xgboost-0.90-cp37-cp37m-win32.whl",sys_platform = "== 'win32'"}
+jupyter = "*"
 
 [dev-packages]
 
