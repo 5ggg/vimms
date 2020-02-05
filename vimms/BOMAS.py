@@ -325,12 +325,6 @@ def create_controller(controller_method, search_param_dict, base_param_dict):
     NotImplementedError()
 
 
-def controller_score():  # TODO: this function may already be defined, be careful!!!
-    NotImplementedError()
-    # TODO: move this out of the optimiser function
-
-
-
 def Heatmap_GridSearch(GridSearch_object, outcome_name, X_name, Y_name):
     results = GridSearch_object.results.pivot(X_name, Y_name, outcome_name)
     ax = sns.heatmap(results)
