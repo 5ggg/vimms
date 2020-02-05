@@ -12,6 +12,7 @@ from vimms.Common import POSITIVE, DEFAULT_MS1_SCAN_WINDOW, DEFAULT_MSN_SCAN_WIN
 from vimms.DIA import DiaWindows
 from vimms.MassSpec import ScanParameters, ExclusionItem
 from vimms.Roi import match, Roi
+from vimms.PeakDetector import calculate_window_change
 
 
 class Precursor(object):
@@ -326,7 +327,7 @@ class TopNController(Controller):
         return False
 
 
-class HybridController(TopNController):
+class PurityController(TopNController):
     def __init__(self, ionisation_mode, N, scan_param_changepoints,
                  isolation_widths, mz_tols, rt_tols, min_ms1_intensity,
                  n_purity_scans=None, purity_shift=None, purity_threshold=0, purity_randomise=True, purity_add_ms1=True):
@@ -454,25 +455,13 @@ class RoiController(TopNController):
     """
 
     def __init__(self, ionisation_mode, isolation_width, mz_tol, min_ms1_intensity, min_roi_intensity,
-                 min_roi_length, score_method, N=None, rt_tol=10, score_params=None, min_roi_length_for_fragmentation=1,
-                 roi_picking_model=None, roi_param_dict=None, dsda_scoring_df=None):
+                 min_roi_length,  N=None, rt_tol=10, min_roi_length_for_fragmentation=1):
         super().__init__(ionisation_mode, N, isolation_width, mz_tol, rt_tol, min_ms1_intensity)
 
         # ROI stuff
         self.min_roi_intensity = min_roi_intensity
         self.mz_units = 'ppm'
         self.min_roi_length = min_roi_length
-
-        # peak picking stuff
-        self.roi_picking_model = roi_picking_model
-        self.roi_param_dict = roi_param_dict
-
-        # Dsda stuff
-        self.dsda_scoring_df = dsda_scoring_df
-
-        # Score stuff
-        self.score_params = score_params
-        self.score_method = score_method
         self.min_roi_length_for_fragmentation = min_roi_length_for_fragmentation
 
         # Create ROI
@@ -575,29 +564,11 @@ class RoiController(TopNController):
                 del self.live_roi[pos]
                 del self.live_roi_fragmented[pos]
                 del self.live_roi_last_rt[pos]
-        if self.score_method == 'Peak Picking':
-            self.roi_scores = self._get_roi_scores()
-        if self.score_method == 'DsDA':
-            self.dsda_scores = self._get_dsda_scores()
 
     def _get_scores(self):
-        if self.score_method == "Top N":
-            scores = self._get_top_n_score()
-            if len(scores) > self.N:  # number of fragmentation events filter
-                scores[scores.argsort()[:(len(scores) - self.N)]] = 0
-        elif self.score_method == "Peak Picking":
-            scores = self._get_top_n_score()
-            scores *= self.roi_scores
-            if len(scores) > self.N:  # number of fragmentation events filter
-                scores[scores.argsort()[:(len(scores) - self.N)]] = 0
-        elif self.score_method == 'DsDA':
-            scores = self._get_top_n_score()
-            scores *= self.dsda_scores
-            if len(scores) > self.N:  # number of fragmentation events filter
-                scores[scores.argsort()[:(len(scores) - self.N)]] = 0
-        return scores
+        NotImplementedError()
 
-    def _get_top_n_score(self):
+    def _get_dda_scores(self):
         scores = np.log(self.current_roi_intensities)  # log intensities
         scores *= (np.log(self.current_roi_intensities) > np.log(self.min_ms1_intensity))  # intensity filter
         time_filter = (1 - np.array(self.live_roi_fragmented).astype(int))
@@ -606,6 +577,83 @@ class RoiController(TopNController):
         scores *= time_filter
         scores *= (self.current_roi_length >= self.min_roi_length_for_fragmentation)
         return scores
+
+    def _get_top_N_scores(self, scores):
+        if len(scores) > self.N:  # number of fragmentation events filter
+            scores[scores.argsort()[:(len(scores) - self.N)]] = 0
+        return scores
+
+
+########################################################################################################################
+# Extended ROI Controllers
+########################################################################################################################
+
+class TopN_RoiController(RoiController):
+    def __init__(self, ionisation_mode, isolation_width, mz_tol, min_ms1_intensity, min_roi_intensity,
+                 min_roi_length, N=None, rt_tol=10, min_roi_length_for_fragmentation=1):
+        super().__init__(ionisation_mode, isolation_width, mz_tol, min_ms1_intensity, min_roi_intensity,
+                 min_roi_length, N, rt_tol, min_roi_length_for_fragmentation)
+
+    def _get_scores(self):
+        initial_scores = self._get_dda_scores()
+        scores = self._get_top_N_scores(initial_scores)
+        return scores
+
+
+class DsDA_RoiController(RoiController):
+    def __init__(self, ionisation_mode, isolation_width, mz_tol, min_ms1_intensity, min_roi_intensity,
+                 dsda_scoring_df,  # controller specific parameters
+                 min_roi_length=1, N=None, rt_tol=10, min_roi_length_for_fragmentation=1):
+        super().__init__(ionisation_mode, isolation_width, mz_tol, min_ms1_intensity, min_roi_intensity,
+                 min_roi_length, N, rt_tol, min_roi_length_for_fragmentation)
+        self.dsda_scoring_df = dsda_scoring_df
+
+    def _get_dsda_scores(self):
+        dsda_scores = [1 for i in self.live_roi]  # TODO: implement DSDA peak scores
+        return dsda_scores
+
+    def _get_scores(self):
+        initial_scores = self._get_dda_scores()
+        initial_scores *= self._get_dsda_scores()
+        scores = self._get_top_N_scores(initial_scores)
+        return scores
+
+
+class Probability_RoiController(RoiController):
+    def __init__(self, ionisation_mode, isolation_width, mz_tol, min_ms1_intensity, min_roi_intensity,
+                 probability_method, model_params,  # controller specific parameters
+                 min_roi_length=1, N=None, rt_tol=10, min_roi_length_for_fragmentation=1):
+        super().__init__(ionisation_mode, isolation_width, mz_tol, min_ms1_intensity, min_roi_intensity,
+                 min_roi_length, N, rt_tol, min_roi_length_for_fragmentation)
+        self.probability_method = probability_method
+        self.model_params = model_params
+
+    def _get_prob_scores(self):
+        prob_scores = []
+        for roi in self.live_roi:
+            if len(roi.intensity_list) < min(self.probability_method.roi_change_n, self.min_roi_length_for_fragmentation):
+                prob_scores.append(0)
+            else:
+                change = calculate_window_change(roi.intensity_list, self.probability_method.roi_change_n)
+                probs = self.probability_method.predict(change)
+                prob_scores = sum(self.model_params * probs)
+        return prob_scores
+
+    def _get_scores(self):
+        initial_scores = self._get_dda_scores()
+        initial_scores *= self._get_prob_scores()
+        scores = self._get_top_N_scores(initial_scores)
+        return scores
+
+
+class Classifier_RoiController(RoiController):  # TODO: Needs properly implementing, but working roughly in principle
+    def __init__(self, ionisation_mode, isolation_width, mz_tol, min_ms1_intensity, min_roi_intensity,
+                 roi_picking_model, roi_param_dict,  # controller specific parameters
+                 min_roi_length=1, N=None, rt_tol=10, min_roi_length_for_fragmentation=1):
+        super().__init__(ionisation_mode, isolation_width, mz_tol, min_ms1_intensity, min_roi_intensity,
+                 min_roi_length, N, rt_tol, min_roi_length_for_fragmentation)
+        self.roi_picking_model = roi_picking_model
+        self.roi_param_dict = roi_param_dict
 
     def _get_roi_scores(self):
         if not self.live_roi:
@@ -619,10 +667,11 @@ class RoiController(TopNController):
                 roi_scores.append(self.roi_picking_model.predict_proba(roi_df)[0][1])
         return roi_scores
 
-    def _get_dsda_scores(self):
-        dsda_scores = [1 for i in self.live_roi]  # TODO: implement DSDA peak scores
-        return dsda_scores
-
+    def _get_scores(self):
+        initial_scores = self._get_dda_scores()
+        initial_scores *= self._get_roi_scores()
+        scores = self._get_top_N_scores(initial_scores)
+        return scores
 
 ########################################################################################################################
 # DIA Controllers
